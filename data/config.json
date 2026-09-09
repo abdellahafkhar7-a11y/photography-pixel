@@ -1,0 +1,185 @@
+{
+  "_readme": "======================================================== CENTRAL CONFIGURATION FILE ========================================================\n This is the ONLY file you need to edit to customize your portfolio content.\n The website reads these values automatically on page load.\n \n HOW TO USE:\n   1. Find the category you want to edit below.\n   2. Change the value between the quotes.\n   3. Save the file and refresh your website.\n \n FIELD GUIDE:\n   label       → Short name shown on the navigation card (e.g. 'UGC')\n   title       → Heading shown on the category page (e.g. 'UGC Videos')\n   description → Short text shown under the heading on the category page\n   subtitle    → Secondary text shown under the heading\n   seoTitle    → Browser tab title and search engine title\n   seoDescription → Meta description for search engines\n   ctaText     → Call-to-action text (leave empty if not needed)\n   buttonLabel → Text for the 'View All' button on the homepage preview\n   thumbnail   → Placeholder image URL for empty category (leave empty if not needed)\n   coverImage  → Cover image URL for the category (leave empty if not needed)\n   txtFile     → Name of the TXT file in /data/ that contains video URLs\n ===========================================================================================================================================",
+
+  "_site_defaults": {
+    "_comment": "These are the default SEO values used on the homepage and as fallback.",
+    "defaultSeoTitle": "Photography Pixel | وكالة تصوير وتسويق رقمي في أيت ملول - أكادير",
+    "defaultSeoDescription": "Photography Pixel: وكالة تصوير وتسويق رقمي متخصصة في صناعة المحتوى، تصوير المنتجات، المحلات التجارية، فيديوهات UGC والأعراس في أيت ملول - أكادير."
+  },
+
+  "_static_pages": {
+    "_comment": "SEO and metadata for non-category pages (home, portfolio, contact, equipment).",
+    "home": {
+      "seoTitle": "Photography Pixel | وكالة تصوير وتسويق رقمي في أيت ملول - أكادير",
+      "seoDescription": "Photography Pixel: وكالة تصوير وتسويق رقمي متخصصة في صناعة المحتوى، تصوير المنتجات، المحلات التجارية، فيديوهات UGC والأعراس في أيت ملول - أكادير.",
+      "crumb": "Home"
+    },
+    "home-portfolio": {
+      "seoTitle": "Portfolio | Photography Pixel",
+      "seoDescription": "استعرض أحدث أعمالنا الإبداعية: فيديوهات UGC، تصوير، محلات تجارية، أعراس وخدمات احترافية في أيت ملول - أكادير.",
+      "crumb": "Portfolio"
+    },
+    "home-contact": {
+      "seoTitle": "Contact | Photography Pixel",
+      "seoDescription": "تواصل مع وكالة Photography Pixel لخدمات التصوير والتسويق الرقمي في أيت ملول - أكادير. واتساب، إنستغرام، بريد إلكتروني.",
+      "crumb": "Contact"
+    },
+    "equipment": {
+      "seoTitle": "Equipment | Photography Pixel",
+      "seoDescription": "تعرف على معدات الاستوديو الاحترافية المستخدمة في وكالة Photography Pixel.",
+      "crumb": "Equipment"
+    }
+  },
+
+  "categories": {
+    "ugc": {
+      "_comment": "=== UGC Category — Videos stored in data/ugc.txt ===",
+      "label": "UGC",
+      "title": "UGC",
+      "description": "Add your description here",
+      "subtitle": "UGC Videos",
+      "seoTitle": "UGC Videos | Photography Pixel",
+      "seoDescription": "مجموعة فيديوهات UGC (محتوى المستخدمين) من وكالة Photography Pixel — محتوى إبداعي احترافي للمنتجات والعلامات التجارية.",
+      "ctaText": "",
+      "buttonLabel": "عرض المزيد",
+      "thumbnail": "",
+      "coverImage": "",
+      "txtFile": "ugc.txt"
+    },
+
+    "shoting": {
+      "_comment": "=== Shooting Category — Videos stored in data/shooting.txt ===",
+      "label": "Shooting",
+      "title": "Shooting",
+      "description": "Add your description here",
+      "subtitle": "Shooting Videos",
+      "seoTitle": "Shooting Videos | Photography Pixel",
+      "seoDescription": "مجموعة أعمال التصوير الاحترافي من وكالة Photography Pixel — تصوير منتجات، شخصي، وملابس.",
+      "ctaText": "",
+      "buttonLabel": "عرض المزيد",
+      "thumbnail": "",
+      "coverImage": "",
+      "txtFile": "shooting.txt"
+    },
+
+    "stores": {
+      "_comment": "=== Stores Category — Videos stored in data/stores.txt ===",
+      "label": "Stores",
+      "title": "Stores",
+      "description": "Add your description here",
+      "subtitle": "Store Videos",
+      "seoTitle": "Store Videos | Photography Pixel",
+      "seoDescription": "فيديوهات تصوير المحلات التجارية من وكالة Photography Pixel — محتوى بصري جذاب للمتاجر والمحلات.",
+      "ctaText": "",
+      "buttonLabel": "عرض المزيد",
+      "thumbnail": "",
+      "coverImage": "",
+      "txtFile": "stores.txt"
+    },
+
+    "events": {
+      "_comment": "=== Events Category — Videos stored in data/events.txt ===",
+      "label": "Events",
+      "title": "Events",
+      "description": "Add your description here",
+      "subtitle": "Event Videos",
+      "seoTitle": "Event Videos | Photography Pixel",
+      "seoDescription": "تصوير الأعراس والمناسبات من وكالة Photography Pixel — تغطية كاملة للأحداث بجودة سينمائية.",
+      "ctaText": "",
+      "buttonLabel": "عرض المزيد",
+      "thumbnail": "",
+      "coverImage": "",
+      "txtFile": "events.txt"
+    },
+
+    "services": {
+      "_comment": "=== Services Category — Videos stored in data/services.txt ===",
+      "label": "Services",
+      "title": "Services",
+      "description": "Add your description here",
+      "subtitle": "Service Videos",
+      "seoTitle": "Service Videos | Photography Pixel",
+      "seoDescription": "فيديوهات الخدمات الاحترافية من وكالة Photography Pixel — محتوى تسويقي لخدمات الشركات والمؤسسات.",
+      "ctaText": "",
+      "buttonLabel": "عرض المزيد",
+      "thumbnail": "",
+      "coverImage": "",
+      "txtFile": "services.txt"
+    },
+
+    "gallery": {
+      "_comment": "=== Gallery Category — Videos stored in data/gallery.txt (shown in expanded nav) ===",
+      "label": "Gallery",
+      "title": "Gallery",
+      "description": "Add your description here",
+      "subtitle": "Gallery",
+      "seoTitle": "Gallery | Photography Pixel",
+      "seoDescription": "معرض شامل لأعمال وكالة Photography Pixel — مجموعة من جميع الفئات.",
+      "ctaText": "",
+      "buttonLabel": "عرض المزيد",
+      "thumbnail": "",
+      "coverImage": "",
+      "txtFile": "gallery.txt"
+    },
+
+    "drone": {
+      "_comment": "=== Locations Category — Videos stored in data/drone.txt ===",
+      "label": "Locations",
+      "title": "Locations",
+      "description": "Add your description here",
+      "subtitle": "Locations",
+      "seoTitle": "Locations | Photography Pixel",
+      "seoDescription": "تصوير المواقع والأماكن من وكالة Photography Pixel — لقطات سينمائية احترافية للمواقع والأماكن.",
+      "ctaText": "",
+      "buttonLabel": "عرض المزيد",
+      "thumbnail": "",
+      "coverImage": "",
+      "txtFile": "drone.txt"
+    },
+
+    "models": {
+      "_comment": "=== Models Page — Data stored in data/models.json ===",
+      "label": "Model",
+      "title": "المودل",
+      "description": "تعرف على موديلات الاستوديو المتاحة للحجز",
+      "subtitle": "تعرف على موديلات الاستوديو المتاحة للحجز",
+      "seoTitle": "Models | Photography Pixel",
+      "seoDescription": "تعرف على موديلات الاستوديو المتاحة للحجز من وكالة Photography Pixel في أيت ملول - أكادير.",
+      "ctaText": "احجز هذا المودل",
+      "buttonLabel": "عرض المزيد",
+      "thumbnail": "",
+      "coverImage": "",
+      "txtFile": ""
+    },
+
+    "media-buyer": {
+      "_comment": "=== Media Buyer Page — Data stored in data/media-buyer.json ===",
+      "label": "Media Buyer",
+      "title": "Media Buyer",
+      "description": "معرض الحملات الإعلانية وأدائها",
+      "subtitle": "معرض الحملات الإعلانية وأدائها",
+      "seoTitle": "Media Buyer | Photography Pixel",
+      "seoDescription": "معرض الحملات الإعلانية وأدائها من وكالة Photography Pixel — نتائج قياسية على منصات التواصل الاجتماعي.",
+      "ctaText": "",
+      "buttonLabel": "عرض المزيد",
+      "thumbnail": "",
+      "coverImage": "",
+      "txtFile": ""
+    },
+
+    "voiceover": {
+      "_comment": "=== Voice Over Page — Data stored in data/voiceover.json ===",
+      "label": "Voice Over",
+      "title": "Voice Over",
+      "description": "Professional Arabic Voice Over for commercials, social media, documentaries, corporate videos and more.",
+      "subtitle": "Professional Arabic Voice Over for commercials, social media, documentaries, corporate videos and more.",
+      "seoTitle": "Voice Over | Photography Pixel",
+      "seoDescription": "خدمات التعليق الصوتي الاحترافي بالعربية من وكالة Photography Pixel — للإعلانات، الوثائقيات، والمحتوى المؤسسي.",
+      "ctaText": "",
+      "buttonLabel": "عرض المزيد",
+      "thumbnail": "",
+      "coverImage": "",
+      "txtFile": ""
+    }
+  }
+}

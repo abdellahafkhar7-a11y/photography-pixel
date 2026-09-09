@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="robots" content="noindex, nofollow">
+    <title>404 — الصفحة غير موجودة | Photography Pixel</title>
+    <meta name="theme-color" content="#6C4DFF">
+    <link rel="icon" type="image/png" href="/assets/images/logo-3d.png">
+    <link rel="apple-touch-icon" href="/assets/images/logo-3d.png">
+    <link rel="stylesheet" href="/styles.css?v=2b612b5">
+    <style>
+      .error-page {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        min-height: 100dvh;
+        text-align: center;
+        padding: var(--space-8);
+      }
+      .error-code {
+        font-size: clamp(5rem, 20vw, 10rem);
+        font-weight: var(--weight-black);
+        background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        line-height: 1;
+        margin-bottom: var(--space-4);
+      }
+      .error-message {
+        font-size: clamp(1.25rem, 3vw, 1.75rem);
+        font-weight: var(--weight-bold);
+        color: var(--text-primary);
+        margin-bottom: var(--space-3);
+      }
+      .error-subtitle {
+        font-size: var(--text-lg);
+        color: var(--text-muted);
+        margin-bottom: var(--space-8);
+        max-width: 480px;
+      }
+      .error-home-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        padding: var(--space-3) var(--space-8);
+        background: linear-gradient(135deg, var(--accent-dark), var(--accent-primary), var(--accent-secondary));
+        color: #fff;
+        font-weight: var(--weight-bold);
+        font-size: var(--text-base);
+        border-radius: var(--radius-full);
+        text-decoration: none;
+        box-shadow: 0 4px 15px rgba(108, 77, 255, 0.35);
+        transition: all 0.3s ease;
+      }
+      .error-home-btn:hover {
+        transform: translateY(-3px) scale(1.05);
+        box-shadow: 0 8px 25px rgba(108, 77, 255, 0.5);
+      }
+      .error-home-btn:active {
+        transform: translateY(-1px) scale(1.02);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="error-page">
+      <div class="error-code">404</div>
+      <h1 class="error-message">الصفحة غير موجودة</h1>
+      <p class="error-subtitle">عذراً، الصفحة التي تبحث عنها غير متوفرة أو تم نقلها.</p>
+      <a href="/" class="error-home-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9 22 9 12 15 12 15 22"></polyline>
+        </svg>
+        <span>العودة للرئيسية</span>
+      </a>
+    </main>
+    <script>
+      // Redirect to homepage after SPA loads if user clicks back
+      if (window.history.length > 1) {
+        // keep the page — user can navigate back
+      }
+    </script>
+  </body>
+</html>

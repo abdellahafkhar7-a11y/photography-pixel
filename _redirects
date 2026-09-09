@@ -1,0 +1,11 @@
+# ── Redirects — Photography Pixel ──────────────────────────
+# Static files (prerendered HTML, CSS, JS, images, data) are served
+# directly by Cloudflare Pages — no redirect needed for those.
+#
+# Only unknown paths hit the catch-all below.
+
+# /photography and /services serve the same page — canonicalize
+/photography /services 301
+
+# SPA fallback: unknown routes get a real 404 (not a soft-200)
+/* /404.html 404

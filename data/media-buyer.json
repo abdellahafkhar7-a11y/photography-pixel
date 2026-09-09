@@ -1,0 +1,20 @@
+[
+  {
+    "screenshot": "assets/ads media buyer/ads 1.jpg",
+    "campaign": "Photography Pixel",
+    "platform": "Facebook Ads",
+    "objective": "Messages",
+    "messages": "120",
+    "result": "ROAS 4.2",
+    "description": "حملة لجلب العملاء عبر واتساب"
+  },
+  {
+    "screenshot": "assets/ads media buyer/ads 1.jpg",
+    "campaign": "La Sublime",
+    "platform": "Instagram Ads",
+    "objective": "Sales",
+    "messages": "350",
+    "result": "ROAS 6.1",
+    "description": "حملة مبيعات"
+  }
+]

@@ -1,0 +1,15 @@
+[
+  {
+    "id": "vo-001",
+    "title": "Hamid Voice Over",
+    "category": "Voice Over",
+    "description": "Short description",
+    "cover": "assets/voiceover/vocal.jpg",
+    "audio": "assets/voiceover/hamid 1.mp3",
+    "duration": "2:30",
+    "language": "Arabic",
+    "client": "Client Name",
+    "date": "2025-06-30",
+    "featured": false
+  }
+]
