@@ -39,33 +39,6 @@ function debounce(func, wait) {
   };
 }
 
-// TEMPORARILY DISABLED for debugging — restore after diagnostic
-// // Disable context menu on videos and images (basic download protection)
-// document.addEventListener('contextmenu', e => {
-//   if (e.target.tagName === 'VIDEO' || e.target.tagName === 'IMG' || e.target.closest('.reel-card')) {
-//     e.preventDefault();
-//   }
-// });
-//
-// // Basic dev-tools / view-source shortcut deterrence (does not provide real security)
-// document.addEventListener('keydown', e => {
-//   // F12
-//   if (e.key === 'F12') {
-//     e.preventDefault();
-//     return;
-//   }
-//   // Ctrl+Shift+I / Ctrl+Shift+J / Ctrl+Shift+C (dev tools)
-//   if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i' || e.key === 'J' || e.key === 'j' || e.key === 'C' || e.key === 'c')) {
-//     e.preventDefault();
-//     return;
-//   }
-//   // Ctrl+U (view source)
-//   if (e.ctrlKey && !e.shiftKey && (e.key === 'U' || e.key === 'u')) {
-//     e.preventDefault();
-//     return;
-//   }
-// });
-
 // ============================================
 // VIDEO CATEGORIES — TXT File System
 // ============================================
@@ -187,7 +160,8 @@ function applyConfigToStaticPages() {
 }
 
 // Cache for fetched category URLs — avoids duplicate network requests
-// when getSearchIndex() re-reads the same TXT files after loadVideoCategories()
+// when getSearchIndex() re-reads the same TXT files after loadVideoCategories().
+// Stores the in-flight Promise so concurrent callers share one fetch.
 const categoryUrlCache = {};
 
 // Set of unavailable Bamboo video IDs (loaded from data/video-status.json)
@@ -215,41 +189,47 @@ function getBambooVideoId(url) {
 }
 
 // Fetch a TXT file and return an array of validated, deduplicated URLs
-async function fetchCategoryUrls(txtFile) {
+function fetchCategoryUrls(txtFile) {
   if (categoryUrlCache[txtFile]) return categoryUrlCache[txtFile];
 
-  await loadVideoStatus();
+  const loadPromise = (async () => {
+    await loadVideoStatus();
 
-  try {
-    const response = await fetch('/data/' + txtFile);
-    if (!response.ok) return [];
-    const text = await response.text();
+    try {
+      const response = await fetch('/data/' + txtFile);
+      if (!response.ok) return [];
+      const text = await response.text();
 
-    // Remove UTF-8 BOM if present
-    const cleaned = text.replace(/^\uFEFF/, '');
+      // Remove UTF-8 BOM if present
+      const cleaned = text.replace(/^\uFEFF/, '');
 
-    const seen = new Set();
-    const urls = [];
+      const seen = new Set();
+      const urls = [];
 
-    for (const line of cleaned.split(/\r?\n/)) {
-      const url = line.trim();
-      if (!url) continue;
-      if (!/^https:\/\//.test(url)) continue;
-      if (seen.has(url)) continue;
+      for (const line of cleaned.split(/\r?\n/)) {
+        const url = line.trim();
+        if (!url) continue;
+        if (!/^https:\/\//.test(url)) continue;
+        if (seen.has(url)) continue;
 
-      // Filter out unavailable/processing videos
-      var videoId = getBambooVideoId(url);
-      if (videoId && unavailableVideoIds.has(videoId)) continue;
+        // Filter out unavailable/processing videos
+        var videoId = getBambooVideoId(url);
+        if (videoId && unavailableVideoIds.has(videoId)) continue;
 
-      seen.add(url);
-      urls.push(url);
+        seen.add(url);
+        urls.push(url);
+      }
+
+      return urls;
+    } catch {
+      return [];
     }
+  })();
 
-    categoryUrlCache[txtFile] = urls;
-    return urls;
-  } catch {
-    return [];
-  }
+  categoryUrlCache[txtFile] = loadPromise;
+  // Don't cache failures permanently — allow a retry on the next call
+  loadPromise.catch(() => { delete categoryUrlCache[txtFile]; });
+  return loadPromise;
 }
 
 // ============================================
@@ -451,28 +431,98 @@ function ensureCategoryContainers() {
   });
 }
 
+// Per-category video URL lists in display order (populated once at load).
+// Full grids are rendered lazily on first visit of each page (see
+// ensurePageContentLoaded) so hidden pages don't create/load iframes.
+const categoryDisplayUrls = {};
+const renderedPages = new Set();
+let categoryUrlsReady = null;
+
 async function loadVideoCategories() {
   await loadSiteConfig();
   pageMeta = buildPageMeta();
   applyConfigToStaticPages();
   ensureCategoryContainers();
-  handleRoute();
 
-  await Promise.all(CATEGORIES.map(async cat => {
+  // Fetch every TXT once (shared by homepage previews, category pages
+  // and the search index). Rendering is deferred to page activation.
+  categoryUrlsReady = Promise.all(CATEGORIES.map(async cat => {
     const urls = await fetchCategoryUrls(cat.txt);
+
+    // Remove empty featured preview block (e.g. gallery.txt is empty)
     if (urls.length === 0) {
-      // Remove empty featured preview block (e.g. gallery.txt is empty)
       const emptyPreview = document.getElementById('home-grid-' + cat.slug);
       if (emptyPreview) emptyPreview.parentElement.remove();
       return;
     }
 
     // Deterministic hourly shuffle — UGC only
-    var displayUrls = cat.slug === 'ugc' ? hourlyShuffle(urls) : urls;
-
-    renderVideoCards(displayUrls, 'home-grid-' + cat.slug, cat.slug, 3);
-    renderVideoCards(displayUrls, 'grid-cat-' + cat.slug, cat.slug);
+    categoryDisplayUrls[cat.slug] = cat.slug === 'ugc' ? hourlyShuffle(urls) : urls;
   }));
+
+  // Resolve the route — may lazily render the active page's content
+  // (awaits categoryUrlsReady, which is already in flight).
+  handleRoute();
+
+  // If the current page is the homepage, render its featured previews now
+  if (isHomeActive()) renderHomePreviews();
+}
+
+function isHomeActive() {
+  const active = document.querySelector('.page-view.active');
+  return !!active && active.id === 'page-home';
+}
+
+// Render the 3-per-category featured previews inside the (visible) homepage.
+// Runs once, when the homepage first becomes active.
+async function renderHomePreviews() {
+  if (renderedPages.has('home-featured')) return;
+  if (!categoryUrlsReady) return; // data not initialized yet — retried after load
+  renderedPages.add('home-featured');
+
+  await categoryUrlsReady;
+
+  CATEGORIES.forEach(cat => {
+    renderVideoCards(categoryDisplayUrls[cat.slug] || [], 'home-grid-' + cat.slug, cat.slug, 3);
+  });
+}
+
+// Render the full grid of a category page on first visit.
+async function renderCategoryPage(slug) {
+  const urls = categoryDisplayUrls[slug] || await fetchCategoryUrls(
+    (CATEGORIES.find(cat => cat.slug === slug) || {}).txt || (slug + '.txt')
+  );
+  // Deterministic hourly shuffle — UGC only (same order as homepage previews)
+  const displayUrls = slug === 'ugc' ? hourlyShuffle(urls) : urls;
+  renderVideoCards(displayUrls, 'grid-cat-' + slug, slug);
+}
+
+// Lazily load/render the content of a page the first time it is shown.
+// Keeps hidden pages free of iframes/images until they are actually visited.
+function ensurePageContentLoaded(pageName) {
+  if (pageName.indexOf('cat-') === 0) {
+    if (!renderedPages.has(pageName)) {
+      renderedPages.add(pageName);
+      renderCategoryPage(pageName.slice(4));
+    }
+  } else if (pageName.indexOf('home') === 0) {
+    renderHomePreviews();
+  } else if (pageName === 'models') {
+    if (!renderedPages.has(pageName)) {
+      renderedPages.add(pageName);
+      loadModels();
+    }
+  } else if (pageName === 'media-buyer') {
+    if (!renderedPages.has(pageName)) {
+      renderedPages.add(pageName);
+      loadMediaBuyer();
+    }
+  } else if (pageName === 'voiceover') {
+    if (!renderedPages.has(pageName)) {
+      renderedPages.add(pageName);
+      document.dispatchEvent(new Event('pp:load-voiceovers'));
+    }
+  }
 }
 
 // ============================================
@@ -777,6 +827,13 @@ function navigateTo(pageName) {
 function handleRoute() {
   const route = getCurrentRoute();
   const pageName = ROUTES[route] || 'home';
+
+  // Browser back/forward: close any open overlay so its scroll lock
+  // (body overflow: hidden) doesn't stick on the newly shown page.
+  if (imageModal && imageModal.classList.contains('active')) closeImagePreview();
+  if (menuPanel && menuPanel.classList.contains('active')) closeMenu();
+  document.dispatchEvent(new Event('pp:stop-voiceover'));
+
   showPage(pageName);
 }
 
@@ -848,11 +905,36 @@ function setMetaContent(selector, content) {
   if (el) el.setAttribute('content', content);
 }
 
+// Instant scroll to top — bypasses CSS scroll-behavior:smooth so page
+// changes and initial loads never visibly "animate" from an old position.
+function scrollToTopInstant() {
+  const root = document.documentElement;
+  const prevBehavior = root.style.scrollBehavior;
+  root.style.scrollBehavior = 'auto';
+  window.scrollTo(0, 0);
+  root.style.scrollBehavior = prevBehavior;
+}
+
+// Stop video playback inside a page-view that is being hidden. Bamboo
+// iframes are cross-origin and cannot be paused from the parent page, so
+// the only reliable way to stop them (and any ghost audio) is to re-navigate
+// the iframe to its own src — the player reloads paused. Iframes that were
+// still lazily deferred stay deferred (no extra load).
+function resetPageVideos(pageEl) {
+  if (!pageEl) return;
+  pageEl.querySelectorAll('.reel-card iframe').forEach(iframe => {
+    const src = iframe.getAttribute('src');
+    if (src) iframe.src = src;
+  });
+}
+
 // ============================================
 // SPA PAGE NAVIGATION SYSTEM
 // ============================================
 function showPage(pageName) {
   updatePageMeta(pageName);
+
+  const previousActive = document.querySelector('.page-view.active');
 
   // Re-query page views to include dynamically created pages
   const allPageViews = document.querySelectorAll('.page-view');
@@ -864,6 +946,11 @@ function showPage(pageName) {
   } else if (pageName.indexOf('home') === 0) {
     const homePage = document.getElementById('page-home');
     if (homePage) homePage.classList.add('active');
+  }
+
+  // Stop any playing video (ghost audio) in the page we just left
+  if (previousActive && !previousActive.classList.contains('active')) {
+    resetPageVideos(previousActive);
   }
 
   // Update bottom nav active states
@@ -895,10 +982,10 @@ function showPage(pageName) {
         if (contact) contact.scrollIntoView(true);
       }, 50);
     } else {
-      window.scrollTo(0, 0);
+      scrollToTopInstant();
     }
   } else {
-    window.scrollTo(0, 0);
+    scrollToTopInstant();
   }
 
   // Toggle SEO content sections (portfolio/contact unique content)
@@ -928,6 +1015,9 @@ function showPage(pageName) {
     // Force-activate reveal elements already in viewport
     forceActivateRevealCards(revealContainer);
   }
+
+  // Lazily render this page's content (videos/models/etc.) on first visit
+  ensurePageContentLoaded(pageName);
 }
 
 // Bind static nav items immediately (dynamic items bound in ensureCategoryContainers)
@@ -1101,21 +1191,16 @@ const revealObserver = new IntersectionObserver(revealCallback, observerOptions)
 // DOM CONTENT LOADED
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
-  window.scrollTo(0, 0);
+  scrollToTopInstant();
 
   // loadVideoCategories() calls handleRoute() after dynamic pages are created.
   // Calling handleRoute() here would race — category page-views don't exist yet.
 
-  // Critical path: load video categories first
+  // Critical path: fetch config + video data, create containers, resolve route.
+  // Grids/models/voiceovers render lazily when their page is first shown
+  // (ensurePageContentLoaded) instead of being preloaded up front.
   loadVideoCategories();
   initVideoSearch();
-
-  // Defer non-critical loaders to idle
-  if ('requestIdleCallback' in window) {
-    requestIdleCallback(() => { loadModels(); loadMediaBuyer(); });
-  } else {
-    setTimeout(() => { loadModels(); loadMediaBuyer(); }, 200);
-  }
 
   // Add reveal classes to key elements (single query batch)
   const revealAdditions = [
@@ -1148,11 +1233,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Force-activate reveal elements already in viewport (single layout pass)
   forceActivateRevealCards(document);
-});
-
-// Ensure we're at the top after everything loads
-window.addEventListener('load', () => {
-  window.scrollTo(0, 0);
 });
 
 // ============================================
@@ -1775,20 +1855,25 @@ window.addEventListener('load', () => {
     }, 250);
   });
 
+  // Stop audio and close the player modal (used on SPA navigation)
+  function stopVoiceOver() {
+    if (voModal.classList.contains('active')) {
+      closeModal(false);
+    } else if (audio && !audio.paused) {
+      audio.pause();
+      showPlayIcon();
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    }
+  }
+
   // Stop audio when navigating away via [data-nav]
   document.addEventListener('click', e => {
     const navItem = e.target.closest('[data-nav]');
     if (navItem && navItem.dataset.nav !== 'voiceover') {
-      if (voModal.classList.contains('active')) {
-        closeModal(false);
-      } else if (audio) {
-        audio.pause();
-        showPlayIcon();
-        if (rafId) {
-          cancelAnimationFrame(rafId);
-          rafId = null;
-        }
-      }
+      stopVoiceOver();
     }
   }, true); // capture phase — runs before existing nav handlers
 
@@ -1804,8 +1889,15 @@ window.addEventListener('load', () => {
     }
   });
 
-  // Initialize
-  document.addEventListener('DOMContentLoaded', loadVoiceOvers);
+  // SPA router hooks: lazy-load on first visit of the Voice Over page,
+  // stop playback when navigating via browser back/forward.
+  let voLoaded = false;
+  document.addEventListener('pp:load-voiceovers', () => {
+    if (voLoaded) return;
+    voLoaded = true;
+    loadVoiceOvers();
+  });
+  document.addEventListener('pp:stop-voiceover', stopVoiceOver);
 })();
 
 // ============================================
@@ -1869,7 +1961,7 @@ window.addEventListener('load', () => {
     '</svg>';
 
   var BG_IMAGE = 'url("data:image/svg+xml,' + encodeURIComponent(SVG_TILE) + '")';
-  var CONTAINER_SELECTOR = '.reel-card, .cv-video-wrapper';
+  var CONTAINER_SELECTOR = '.reel-card';
   var WATERMARK_CLASS = 'pp-pattern-watermark';
 
   // -- Create watermark overlay if missing in container --

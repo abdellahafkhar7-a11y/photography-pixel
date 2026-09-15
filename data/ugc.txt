@@ -3,8 +3,8 @@ https://cdn.bamboo-cloud.com/api/embed?id=0_2i91viuz&uiconf_id=11688057&type=ent
 https://cdn.bamboo-cloud.com/api/embed?id=0_e2rer58s&uiconf_id=11688057&type=entry&iid=6a7a24a106304449837d1733&newPlayer=true
 https://cdn.bamboo-cloud.com/api/embed?id=0_rt4fza3f&uiconf_id=11688057&type=entry&iid=6a7a24a106304449837d1733&newPlayer=true
 https://cdn.bamboo-cloud.com/api/embed?id=0_aom11epn&uiconf_id=11688057&type=entry&iid=6a7a24a106304449837d1733&newPlayer=true
-https://cdn.bamboo-cloud.com/api/embed?id=0_r1exlbp0&uiconf_id=11688057&type=entry&iid=6a7a24a106304449837d1733&newPlayer=true
-https://cdn.bamboo-cloud.com/api/embed?id=0_syxxnril&uiconf_id=11688057&type=entry&iid=6a7a24a106304449837d1733&newPlayer=true
+
+
 https://cdn.bamboo-cloud.com/api/embed?id=0_x37lpdvm&uiconf_id=11688057&type=entry&iid=6a7a24a106304449837d1733&newPlayer=true
 https://cdn.bamboo-cloud.com/api/embed?id=0_x5dm07f6&uiconf_id=11688057&type=entry&iid=6a7a24a106304449837d1733&newPlayer=true
 https://cdn.bamboo-cloud.com/api/embed?id=0_hdcorwq8&uiconf_id=11688057&type=entry&iid=6a7a24a106304449837d1733&newPlayer=true

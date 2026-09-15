@@ -16,7 +16,6 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE_URL = 'https://photographypixell.com';
-const OG_IMAGE = `${BASE_URL}/assets/images/logo-cover.png`;
 const FALLBACK_THUMBNAIL = `${BASE_URL}/assets/images/logo-3d.png`;
 
 // ── Helpers ──────────────────────────────────────────────
@@ -379,11 +378,6 @@ function generateRouteHtml(route) {
         `        </nav>`,
         `      </section>`
       ].join('\n');
-      // Also remove the placeholder equipment cards (thin content)
-      html = html.replace(
-        /\s*<div class="equipment-grid">[\s\S]*?<\/div>\s*<\/section>/,
-        '\n        </section>'
-      );
     } else if (route.page === 'voiceover') {
       seoSection = [
         `      <section class="seo-content-section active" id="seo-voiceover">`,

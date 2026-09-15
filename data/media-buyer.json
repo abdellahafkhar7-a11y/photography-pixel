@@ -1,6 +1,6 @@
 [
   {
-    "screenshot": "assets/ads media buyer/ads 1.jpg",
+    "screenshot": "/assets/ads media buyer/ads 1.jpg",
     "campaign": "Photography Pixel",
     "platform": "Facebook Ads",
     "objective": "Messages",
@@ -9,7 +9,7 @@
     "description": "حملة لجلب العملاء عبر واتساب"
   },
   {
-    "screenshot": "assets/ads media buyer/ads 1.jpg",
+    "screenshot": "/assets/ads media buyer/ads 1.jpg",
     "campaign": "La Sublime",
     "platform": "Instagram Ads",
     "objective": "Sales",

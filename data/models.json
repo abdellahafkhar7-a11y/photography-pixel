@@ -1,18 +1,8 @@
 [
-    {
-    "name": "كوتر",
-    "photo": "assets/models/كوتر.png",
-    "age": "",
-    "height": "",
-    "city": "اكادير",
-    "category": "ugc _ servisec _ shoting ",
-    "experience": " ",
-    "available": true,
-    "description": "—"
-  },
+
   {
     "name": "مريم",
-    "photo": "assets/models/maryam hawara.png",
+    "photo": "/assets/models/maryam hawara.png",
     "age": "",
     "height": "",
     "city": "اكادير",
@@ -23,7 +13,7 @@
   },
   {
     "name": "دريس",
-    "photo": "assets/models/model dris.JPG",
+    "photo": "/assets/models/model dris.JPG",
     "age": "",
     "height": "",
     "city": "اكادير",
@@ -34,7 +24,7 @@
   },
   {
     "name": "حنان",
-    "photo": "assets/models/model hanan.JPG",
+    "photo": "/assets/models/model hanan.JPG",
     "age": "",
     "height": "",
     "city": "اكادير",
@@ -45,7 +35,7 @@
   },
   {
     "name": "حسناء",
-    "photo": "assets/models/model hasna.JPG",
+    "photo": "/assets/models/model hasna.JPG",
     "age": "",
     "height": "",
     "city": "اكادير",
@@ -57,7 +47,7 @@
   
   {
     "name": "يوسف",
-    "photo": "assets/models/yousef.jpg",
+    "photo": "/assets/models/yousef.jpg",
     "age": "",
     "height": "",
     "city": "اكادير",
@@ -68,7 +58,7 @@
   },
   {
     "name": "خولود",
-    "photo": "assets/models/kholoud.jpg",
+    "photo": "/assets/models/kholoud.jpg",
     "age": "",
     "height": "",
     "city": "اكادير",
