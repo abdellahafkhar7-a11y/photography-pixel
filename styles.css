@@ -4389,3 +4389,10 @@ footer[id] {
     transition: none !important;
   }
 }
+
+.nav-logo-image {
+  height: 45px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+}

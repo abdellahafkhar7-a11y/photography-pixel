@@ -14,7 +14,6 @@ https://cdn.bamboo-cloud.com/api/embed?id=0_56uyei3z&uiconf_id=11688057&type=ent
 https://cdn.bamboo-cloud.com/api/embed?id=0_u1b5xdub&uiconf_id=11688057&type=entry&iid=6a7a24a106304449837d1733&newPlayer=true
 https://cdn.bamboo-cloud.com/api/embed?id=0_lyacamoa&uiconf_id=11688057&type=entry&iid=6a7a24a106304449837d1733&newPlayer=true
 https://cdn.bamboo-cloud.com/api/embed?id=0_wgoae330&uiconf_id=11688057&type=entry&iid=6a7a24a106304449837d1733&newPlayer=true
-https://cdn.bamboo-cloud.com/api/embed?id=0_720zjyju&uiconf_id=11688057&type=entry&iid=6a7a24a106304449837d1733&newPlayer=true
 https://cdn.bamboo-cloud.com/api/embed?id=0_74lhbjfv&uiconf_id=11688057&type=entry&iid=6a7a24a106304449837d1733&newPlayer=true
 https://cdn.bamboo-cloud.com/api/embed?id=0_0bvdbwvf&uiconf_id=11688057&type=entry&iid=6a7a24a106304449837d1733&newPlayer=true
 https://cdn.bamboo-cloud.com/api/embed?id=0_v063zfu9&uiconf_id=11688057&type=entry&iid=6a7a24a106304449837d1733&newPlayer=true
@@ -22,4 +21,3 @@ https://cdn.bamboo-cloud.com/api/embed?id=0_vaq1f695&uiconf_id=11688057&type=ent
 https://cdn.bamboo-cloud.com/api/embed?id=0_bw7q7wj1&uiconf_id=11688057&type=entry&iid=6a7a24a106304449837d1733&newPlayer=true
 https://cdn.bamboo-cloud.com/api/embed?id=0_zgydm9zo&uiconf_id=11688057&type=entry&iid=6a7a24a106304449837d1733&newPlayer=true
 https://cdn.bamboo-cloud.com/api/embed?id=0_jsiswxkw&uiconf_id=11688057&type=entry&iid=6a7a24a106304449837d1733&newPlayer=true
-https://cdn.bamboo-cloud.com/api/embed?id=0_0ftoidzal&uiconf_id=11688057&type=entry&iid=6a7a24a106304449837d1733&newPlayer=true
