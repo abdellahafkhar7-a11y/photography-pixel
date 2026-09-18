@@ -16,7 +16,6 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE_URL = 'https://photographypixell.com';
-const FALLBACK_THUMBNAIL = `${BASE_URL}/assets/images/logo-3d.png`;
 
 // ── Helpers ──────────────────────────────────────────────
 
@@ -63,16 +62,16 @@ function readVideoUrls(txtFile) {
 
 function generateVideoSchema(videos, categoryLabel) {
   if (!videos || videos.length === 0) return null;
-  const graph = videos.map(url => {
-    const rawName = decodeURIComponent(url.split('/').pop() || '').replace(/\.mp4$/i, '');
+  // Honest, valid VideoObject entries: no invented titles, thumbnails,
+  // dates, durations or direct-video URLs. Bamboo embed URLs are exposed
+  // only as embedUrl (player URL), never as contentUrl/encodingFormat.
+  const graph = videos.map((url, i) => {
     return {
       '@type': 'VideoObject',
-      name: `${rawName} — ${categoryLabel} | Photography Pixel`,
-      description: `${categoryLabel} video by Photography Pixel — وكالة تصوير وتسويق رقمي في أيت ملول - أكادير`,
-      thumbnailUrl: FALLBACK_THUMBNAIL,
-      contentUrl: url,
-      encodingFormat: 'video/mp4',
-      uploadDate: '2026-07-17'
+      name: `${categoryLabel} Video ${String(i + 1).padStart(2, '0')} — Photography Pixel`,
+      description: `${categoryLabel} video by Photography Pixel — وكالة تصوير وتسويق رقمي في أيت ملول - أكادير.`,
+      embedUrl: url,
+      inLanguage: 'ar'
     };
   });
   return { '@context': 'https://schema.org', '@graph': graph };
@@ -158,6 +157,18 @@ const categoryRoutes = categoryDefs.map(def => {
 
 // ── HTML generation ─────────────────────────────────────
 
+// Arabic-first category intro copy (grounded in actual services only).
+// Rendered on each category page to reinforce geo + service keywords.
+const categoryIntroCopy = {
+  ugc: 'فيديوهات UGC (محتوى المُنشئين) ننتجها للعلامات التجارية والمتاجر في أكادير والمغرب — محتوى إبداعي يقدّم المنتجات بشكل طبيعي يناسب الإعلانات ووسائل التواصل.',
+  shoting: 'تصوير احترافي للمنتجات والشخصي والملابس في أكادير والمغرب. محتوى بصري متكامل يساعد المتاجر والعلامات التجارية على عرض منتجاتها في الإعلانات والمتاجر الإلكترونية.',
+  stores: 'فيديوهات تصوير المحلات التجارية والمتاجر في المغرب — محتوى بصري احترافي يساعد المحلات على عرض منتجاتها وخدماتها بشكل جذاب.',
+  events: 'تصوير الأعراس والمناسبات في أكادير والمغرب — تغطية كاملة للحدث بجودة سينمائية عالية.',
+  services: 'إنتاج فيديو تسويقي للشركات والمؤسسات في أكادير والمغرب — من التصوير إلى التسليم، لفيديوهات إعلانية وعروض ومحتوى مؤسسي احترافي.',
+  drone: 'تصوير المواقع والأماكن في أكادير والمغرب — لقطات سينمائية احترافية لإبراز مواقع وأماكن التصوير بدقة عالية.',
+  gallery: null
+};
+
 function generateCategoryLinks(excludeRoute) {
   const links = [];
   for (const def of categoryDefs) {
@@ -185,6 +196,15 @@ function generateRouteHtml(route) {
     /<meta name="description" content="[^"]*"/,
     `<meta name="description" content="${escapeAttr(route.desc)}"`
   );
+
+  // 2b. /gallery has no real content yet — keep the route usable but exclude
+  // it from search indexes until real gallery content is added.
+  if (route.page === 'cat-gallery') {
+    html = html.replace(
+      /<meta name="robots" content="[^"]*"/,
+      '<meta name="robots" content="noindex, follow"'
+    );
+  }
 
   // 3. canonical
   html = html.replace(
@@ -247,13 +267,33 @@ function generateRouteHtml(route) {
 
   // 8. Set active page-view div
   if (route.page === 'home-portfolio') {
-    // Inject portfolio intro section before </main> for unique content
+    // Inject a distinct, category-catalog portfolio intro so /portfolio is
+    // unique content (not a near-duplicate of the homepage). Video counts are
+    // real (computed from data/*.txt at build time) — nothing is fabricated.
     const catLinks = generateCategoryLinks('portfolio');
+    const catalogItems = [];
+    for (const cat of categoryRoutes) {
+      if (cat.slug === 'gallery') continue; // no content yet
+      const count = cat.videos ? cat.videos.length : 0;
+      const label = escapeAttr(getConfig(cat.slug, 'label', cat.label));
+      const desc = escapeAttr(getConfig(cat.slug, 'seoDescription', `${cat.label} videos by Photography Pixel.`));
+      catalogItems.push(
+        `          <div class="seo-catalog-item">`,
+        `            <h3 class="seo-catalog-title"><a href="/${cat.route}">${label}</a></h3>`,
+        `            <p class="seo-catalog-text">${desc}</p>`,
+        `            <span class="seo-catalog-count">${count} فيديو</span>`,
+        `          </div>`
+      );
+    }
     const portfolioIntro = [
       `      <section class="seo-content-section reveal" id="portfolio-intro">`,
-      `        <h2 class="seo-content-heading">Portfolio — Photography Pixel</h2>`,
-      `        <p class="seo-content-text">Photography Pixel وكالة تصوير وتسويق رقمي في أيت ملول - أكادير. استعرض أحدث أعمالنا الإبداعية في تصوير المنتجات، المحلات التجارية، الأعراس، الفيديوهات الإعلانية، وتصوير المواقع. نقدم محتوى بصري احترافي يخدم العلامات التجارية والشركات والأفراد في المغرب.</p>`,
-      `        <nav class="seo-links-nav" aria-label="Categories">`,
+      `        <h2 class="seo-content-heading">تصفح معرض الأعمال حسب الفئة</h2>`,
+      `        <p class="seo-content-text">Photography Pixel وكالة تصوير وتسويق رقمي في أيت ملول - أكادير، المغرب. اختر فئة من فئات الأعمال أدناه للاطلاع على أمثلة حقيقية من أعمالنا، أو تواصل معنا مباشرة لتخطيط مشروعك.</p>`,
+      `        <div class="seo-catalog">`,
+      ...catalogItems,
+      `        </div>`,
+      `        <p class="seo-content-text">خدمات إضافية: <a class="seo-inline-link" href="/model">استوديو الموديلات</a>، <a class="seo-inline-link" href="/media-buyer">إدارة الحملات الإعلانية</a>، <a class="seo-inline-link" href="/voice-over">التعليق الصوتي</a>، <a class="seo-inline-link" href="/equipment">معداتنا</a>.</p>`,
+      `        <nav class="seo-links-nav" aria-label="الفئات">`,
       ...catLinks,
       `        </nav>`,
       `      </section>`
@@ -297,6 +337,11 @@ function generateRouteHtml(route) {
       'class="page-view active" id="page-home"',
       'class="page-view" id="page-home"'
     );
+
+    // Remove the homepage H1 (its page-view is hidden on category routes,
+    // so exactly one H1 remains on the page — the category heading below).
+    html = html.replace('<h1>Photography Pixel</h1>', '');
+
     // Inject category page-view div before </main>
     const slug = route.page.slice(4);
     const hasVideos = route.videos && route.videos.length > 0;
@@ -304,11 +349,18 @@ function generateRouteHtml(route) {
     const catHtml = [
       `      <div class="page-view active" id="page-${route.page}" data-page="${route.page}">`,
       `        <section class="sub-page-section reveal">`,
-      `          <h2 class="sub-page-heading">${escapeAttr(route.heading)}</h2>`,
+      `          <h1 class="sub-page-heading">${escapeAttr(route.heading)}</h1>`,
       `          <p class="sub-page-subtitle">${escapeAttr(route.subtitle)}</p>`,
       `          <p class="seo-description">${escapeAttr(route.desc)}</p>`,
       `          <div class="video-grid" data-panel="${slug}-full" id="grid-cat-${slug}"></div>`
     ];
+
+    const introCopy = categoryIntroCopy[slug];
+    if (introCopy) {
+      catHtml.push(
+        `          <p class="seo-content-text">${introCopy} <a class="seo-inline-link" href="/contact">للحجز والاستفسار، تواصل معنا</a>.</p>`
+      );
+    }
 
     if (!hasVideos) {
       catHtml.push(
@@ -319,7 +371,7 @@ function generateRouteHtml(route) {
     }
 
     catHtml.push(
-      `          <nav class="seo-links-nav" aria-label="Categories">`,
+      `          <nav class="seo-links-nav" aria-label="الفئات">`,
       ...catLinks,
       `          </nav>`,
       `        </section>`,
@@ -341,6 +393,35 @@ function generateRouteHtml(route) {
       `class="page-view active" id="page-${route.page}"`
     );
 
+    // Remove the homepage H1 (its page-view is hidden on static sub-routes).
+    // Its short heading would otherwise be read as the page's only H1.
+    html = html.replace('<h1>Photography Pixel</h1>', '');
+
+    // Promote the active route's heading from <h2> to <h1> so each page has
+    // exactly one H1. Styling is class-based (.sub-page-heading) and a
+    // universal reset zeroes heading margins — visual output is unchanged.
+    if (route.page === 'models') {
+      html = html.replace(
+        '<h2 class="sub-page-heading">المودل</h2>',
+        '<h1 class="sub-page-heading">المودل</h1>'
+      );
+    } else if (route.page === 'media-buyer') {
+      html = html.replace(
+        '<h2 class="sub-page-heading">Media Buyer</h2>',
+        '<h1 class="sub-page-heading">Media Buyer</h1>'
+      );
+    } else if (route.page === 'equipment') {
+      html = html.replace(
+        '<h2 class="sub-page-heading">معداتنا</h2>',
+        '<h1 class="sub-page-heading">معداتنا</h1>'
+      );
+    } else if (route.page === 'voiceover') {
+      html = html.replace(
+        '<h2 class="sub-page-heading reveal reveal-delay-1">Voice Over</h2>',
+        '<h1 class="sub-page-heading reveal reveal-delay-1">Voice Over</h1>'
+      );
+    }
+
     // Inject unique SEO content for each static page
     const catLinks = generateCategoryLinks(route.route);
     let seoSection = '';
@@ -351,7 +432,7 @@ function generateRouteHtml(route) {
         `        <h2 class="seo-content-heading">استوديو موديلات Photography Pixel</h2>`,
         `        <p class="seo-content-text">موديلات احترافية متاحة للحجز في أكادير وأيت ملول. نوفّر موديلات لجميع أنواع التصوير: UGC، تصوير المنتجات، الجلسات الإعلانية، الأعراس، والفعاليات. جميع الموديلات لديهم خبرة في التصوير الاحترافي ومتاحون للحجز الفوري عبر واتساب.</p>`,
         `        <p class="seo-content-text">لحجز موديل، تواصل معنا عبر واتساب: +212 663 493 003 أو عبر صفحة <a href="/contact" class="seo-inline-link">تواصل معنا</a>.</p>`,
-        `        <nav class="seo-links-nav" aria-label="Categories">`,
+        `        <nav class="seo-links-nav" aria-label="الفئات">`,
         ...catLinks,
         `        </nav>`,
         `      </section>`
@@ -362,7 +443,7 @@ function generateRouteHtml(route) {
         `        <h2 class="seo-content-heading">إدارة الحملات الإعلانية — Photography Pixel</h2>`,
         `        <p class="seo-content-text">خدمات إدارة الحملات الإعلانية على فيسبوك وإنستغرام. نتائج قياسية في جلب العملاء عبر واتساب والمبيعات المباشرة. نستخدم استهدافاً دقيقاً وإبداعياً للوصول إلى الجمهور المناسب لمنتجك أو خدمتك في المغرب.</p>`,
         `        <p class="seo-content-text">نتائجنا تشمل: حملات بـ ROAS تصل إلى 6.1x، أكثر من 350 رسالة لكل حملة، واستهداف جغرافي دقيق لأكادير وأيت ملول والمناطق المحيطة.</p>`,
-        `        <nav class="seo-links-nav" aria-label="Categories">`,
+        `        <nav class="seo-links-nav" aria-label="الفئات">`,
         ...catLinks,
         `        </nav>`,
         `      </section>`
@@ -373,7 +454,7 @@ function generateRouteHtml(route) {
         `        <h2 class="seo-content-heading">معدات الاستوديو الاحترافية — Photography Pixel</h2>`,
         `        <p class="seo-content-text">نستخدم معدات احترافية متطورة لضمان أعلى جودة في جميع أعمالنا. تشمل معداتنا كاميرات احترافية، عدسات متخصصة، إضاءة استوديو، معدات صوتية، واجهزة تصوير جوي (درون). جميع المعدات تتيح لنا تقديم محتوى بصري بجودة سينمائية.</p>`,
         `        <p class="seo-content-text">سواء كنت تحتاج إلى تصوير منتجات، محلات تجارية، أو فيديوهات UGC، فإن معداتنا توفر نتائج احترافية تلبي متطلبات العلامات التجارية والشركات في المغرب.</p>`,
-        `        <nav class="seo-links-nav" aria-label="Categories">`,
+        `        <nav class="seo-links-nav" aria-label="الفئات">`,
         ...catLinks,
         `        </nav>`,
         `      </section>`
@@ -384,7 +465,7 @@ function generateRouteHtml(route) {
         `        <h2 class="seo-content-heading">التعليق الصوتي الاحترافي — Photography Pixel</h2>`,
         `        <p class="seo-content-text">خدمات تعليق صوتي احترافي بالعربية لجميع أنواع المحتوى: الإعلانات التجارية، الوثائقيات، المحتوى المؤسسي، ومحتوى التواصل الاجتماعي. نقدم جودة عالية مع إمكانية التحكم في النبرة والإيقاع حسب طبيعة المحتوى.</p>`,
         `        <p class="seo-content-text">تشمل خدماتنا: التعليق الصوتي للإعلانات، الأفلام القصيرة، العروض التقديمية، ومحتوى يوتيوب. تواصل معنا للاستماع لعينات صوتية ولحجز جلسة تسجيل.</p>`,
-        `        <nav class="seo-links-nav" aria-label="Categories">`,
+        `        <nav class="seo-links-nav" aria-label="الفئات">`,
         ...catLinks,
         `        </nav>`,
         `      </section>`

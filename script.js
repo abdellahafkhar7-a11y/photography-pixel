@@ -623,7 +623,7 @@ function renderSearchResults(query) {
   resultsContainer.hidden = false;
 
   if (countEl) {
-    countEl.textContent = results.length + ' result' + (results.length !== 1 ? 's' : '') + ' for "' + query.trim() + '"';
+    countEl.textContent = results.length + ' نتيجة لـ "' + query.trim() + '"';
   }
 
   grid.innerHTML = '';
@@ -1069,6 +1069,26 @@ document.addEventListener('click', function(e) {
 // ============================================
 // DYNAMIC MODELS LOADER
 // ============================================
+function formatModelCategory(category) {
+  if (!category) return '';
+  const labelMap = {
+    'ugc': 'UGC',
+    'servisec': 'Services',
+    'shoting': 'Shooting',
+    'store': 'Stores',
+    'stores': 'Stores',
+    'event': 'Events',
+    'events': 'Events'
+  };
+  return String(category)
+    .toLowerCase()
+    .split(/[_\s]+/)
+    .map(part => part.trim())
+    .filter(Boolean)
+    .map(part => labelMap[part] || part)
+    .join('، ');
+}
+
 function createModelCard(model) {
   const card = document.createElement('article');
   card.className = 'model-card reveal-scale';
@@ -1079,21 +1099,49 @@ function createModelCard(model) {
   const availClass = model.available ? 'available' : 'unavailable';
   const availText = model.available ? 'متاح' : 'غير متاح';
 
+  // Known intrinsic dimensions (avoid layout shift for lazy images)
+  const modelImgDims = {
+    '/assets/models/maryam hawara.webp': [1080, 1920],
+    '/assets/models/model dris.webp': [1200, 1800],
+    '/assets/models/model hanan.webp': [1200, 1800],
+    '/assets/models/model hasna.webp': [1200, 1800],
+    '/assets/models/yousef.jpg': [522, 906],
+    '/assets/models/kholoud.jpg': [1036, 1280]
+  };
+  const dims = modelImgDims[model.photo] || [];
+  const dimAttrs = dims[0] ? ` width="${dims[0]}" height="${dims[1]}"` : '';
+
+  // Only render attribute rows that actually have data
+  const attrParts = [];
+  if (model.age && String(model.age).trim()) {
+    attrParts.push(`<span class="model-attr"><span class="model-attr-label">العمر</span><span class="model-attr-value">${model.age}</span></span>`);
+  }
+  if (model.height && String(model.height).trim()) {
+    attrParts.push(`<span class="model-attr"><span class="model-attr-label">الطول</span><span class="model-attr-value">${model.height}</span></span>`);
+  }
+  attrParts.push(`<span class="model-attr"><span class="model-attr-label">المدينة</span><span class="model-attr-value">${model.city || ''}</span></span>`);
+  if (model.category && String(model.category).trim()) {
+    attrParts.push(`<span class="model-attr"><span class="model-attr-label">الفئات</span><span class="model-attr-value">${formatModelCategory(model.category)}</span></span>`);
+  }
+  if (model.experience && String(model.experience).trim()) {
+    attrParts.push(`<span class="model-attr"><span class="model-attr-label">الخبرة</span><span class="model-attr-value">${model.experience}</span></span>`);
+  }
+  const attrHtml = attrParts.join('\n        ');
+
+  const descRaw = (model.description || '').trim();
+  const showDesc = descRaw && descRaw !== '—';
+
   card.innerHTML = `
     <div class="model-photo">
-      <img src="${model.photo}" alt="${model.name}" loading="lazy">
+      <img src="${model.photo}" alt="${model.name}" loading="lazy" decoding="async"${dimAttrs}>
     </div>
     <div class="model-body">
       <h3 class="model-name">${model.name}</h3>
       <div class="model-availability ${availClass}">${availText}</div>
       <div class="model-attributes">
-        <span class="model-attr"><span class="model-attr-label">العمر</span><span class="model-attr-value">${model.age}</span></span>
-        <span class="model-attr"><span class="model-attr-label">الطول</span><span class="model-attr-value">${model.height}</span></span>
-        <span class="model-attr"><span class="model-attr-label">المدينة</span><span class="model-attr-value">${model.city}</span></span>
-        <span class="model-attr"><span class="model-attr-label">الفئات</span><span class="model-attr-value">${model.category}</span></span>
-        <span class="model-attr"><span class="model-attr-label">الخبرة</span><span class="model-attr-value">${model.experience}</span></span>
+        ${attrHtml}
       </div>
-      <p class="model-desc">${model.description}</p>
+      ${showDesc ? `<p class="model-desc">${model.description}</p>` : ''}
       <a href="#" class="button primary model-book-btn">${getConfig('models', 'ctaText', 'احجز هذا المودل')}</a>
     </div>
   `;
@@ -1130,7 +1178,7 @@ function createBuyerCard(campaign) {
 
   card.innerHTML = `
     <div class="buyer-screenshot">
-      <img src="${campaign.screenshot}" alt="${campaign.campaign}" loading="lazy">
+      <img src="${campaign.screenshot}" alt="${campaign.campaign}" loading="lazy" decoding="async" width="1600" height="978">
     </div>
     <div class="buyer-body">
       <h3 class="buyer-campaign">${campaign.campaign}</h3>
@@ -1334,7 +1382,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     card.innerHTML = `
       <div class="vo-card-cover">
-        <img src="${item.cover || ''}" alt="${item.title || ''}" loading="lazy">
+        <img src="${item.cover || ''}" alt="${item.title || ''}" loading="lazy" decoding="async" width="736" height="490">
         <div class="vo-card-overlay">
           <span class="vo-card-play">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
