@@ -208,6 +208,7 @@ const STYLES = `
   .stat .v{font-size:1.65rem;font-weight:800;line-height:1.2;margin-top:.35rem}
   .stat .h{font-size:.74rem;color:var(--text-subtle);margin-top:.15rem}
   .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+  .grid-stats.three{grid-template-columns:repeat(3,1fr)}
   .panel{background:var(--surface-elevated);border:1px solid var(--line-default);border-radius:var(--radius-xl);padding:1.3rem 1.4rem;box-shadow:var(--shadow-sm)}
   .panel-head{display:flex;align-items:center;gap:.6rem;margin-bottom:.85rem}
   .ico-chip{width:36px;height:36px;border-radius:var(--radius-md);background:var(--accent-light);color:var(--accent);display:inline-flex;align-items:center;justify-content:center;flex:none}
@@ -237,9 +238,47 @@ const STYLES = `
   .welcome{display:flex;align-items:center;flex-wrap:wrap;gap:.9rem;margin-bottom:1.25rem}
   .welcome h2{font-size:1.05rem;font-weight:800}
   .welcome .sub{color:var(--text-muted);font-size:.85rem}
+  .welcome-side{display:flex;align-items:center;gap:.6rem;margin-inline-start:auto;flex-wrap:wrap}
   .pill{display:inline-flex;align-items:center;padding:.18rem .65rem;border-radius:var(--radius-full);font-size:.78rem;font-weight:700;border:1px solid var(--line-default);background:var(--bg-secondary);color:var(--text-secondary)}
   .pill.owner{background:var(--accent-light);color:var(--accent);border-color:rgba(54,36,119,.22)}
   .pill.coordinator{background:var(--bg-secondary);color:var(--text-secondary);border-color:var(--line-default)}
+  .welcome .date-chip{display:inline-flex;align-items:center;gap:.4rem;padding:.3rem .7rem;border-radius:var(--radius-full);border:1px solid var(--line-default);background:var(--surface-elevated);color:var(--text-muted);font-size:.8rem;font-weight:600}
+  .panel-action{margin-inline-start:auto;display:inline-flex;align-items:center}
+  .soon-tag + .panel-action{margin-inline-start:.6rem}
+  .section-link{font-size:.82rem;font-weight:700;white-space:nowrap}
+
+  /* Dashboard lists (Phase 4B) */
+  .status-list,.activity-list,.client-list{display:flex;flex-direction:column}
+  .status-row{display:flex;align-items:center;gap:.6rem;padding:.52rem .15rem;border-bottom:1px solid var(--line-subtle)}
+  .status-row:last-child{border-bottom:none}
+  .status-row .dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--text-subtle)}
+  .status-row .s-label{font-size:.88rem;color:var(--text-secondary);font-weight:600}
+  .status-row .s-count{margin-inline-start:auto;font-weight:800;font-size:1rem}
+  .dot.st-pending{background:#9A6B00}
+  .dot.st-preview_viewed{background:var(--accent-bright)}
+  .dot.st-confirmed,.dot.st-download_available{background:var(--accent)}
+  .dot.st-downloaded{background:var(--success)}
+  .dot.st-expired{background:var(--error)}
+  .activity-row,.client-row{display:flex;align-items:center;gap:.7rem;padding:.55rem .15rem;border-bottom:1px solid var(--line-subtle)}
+  .activity-row:last-child,.client-row:last-child{border-bottom:none}
+  .activity-row .a-ico{width:32px;height:32px;border-radius:var(--radius-md);background:var(--accent-light);color:var(--accent);display:inline-flex;align-items:center;justify-content:center;flex:none}
+  .activity-row .a-body{min-width:0;flex:1}
+  .activity-row .a-label{font-size:.88rem;font-weight:700}
+  .activity-row .a-meta{font-size:.76rem;color:var(--text-muted)}
+  .activity-row .a-time{margin-inline-start:auto;font-size:.74rem;color:var(--text-subtle);white-space:nowrap;flex:none}
+  .client-row .c-avatar{width:34px;height:34px;border-radius:var(--radius-full);background:var(--bg-tertiary);color:var(--text-secondary);display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:.85rem;flex:none}
+  .client-row .c-body{min-width:0;flex:1}
+  .client-row .c-name{font-size:.9rem;font-weight:700}
+  .client-row .c-wa{font-size:.76rem;color:var(--text-muted);direction:ltr;text-align:left}
+  .client-row .c-time{margin-inline-start:auto;font-size:.74rem;color:var(--text-subtle);white-space:nowrap;flex:none}
+  .mini-empty{padding:1.1rem .2rem;text-align:center}
+  .mini-empty .muted{color:var(--text-muted);font-size:.88rem;margin-bottom:.85rem}
+  .shortcut{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+  .shortcut .sc-body{min-width:0;flex:1}
+  .shortcut .sc-body h2{font-size:1.05rem;font-weight:800}
+  .shortcut .sc-body .muted{font-size:.88rem;color:var(--text-muted)}
+  .shortcut .sc-actions{display:flex;gap:.6rem;flex-wrap:wrap}
+  a:focus-visible,.btn:focus-visible,.nav-item:focus-visible,button:focus-visible,.logout-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--radius-sm)}
 
   /* Tables */
   .table-wrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
@@ -284,6 +323,7 @@ const STYLES = `
   }
   @media (max-width:767px){
     .grid-stats{grid-template-columns:repeat(2,1fr);gap:.8rem}
+    .grid-stats.three{grid-template-columns:repeat(2,1fr);gap:.8rem}
     .grid-2{grid-template-columns:1fr}
     .content{padding:1.25rem 1rem 2.5rem}
     .top{padding:.7rem 1rem}
@@ -291,6 +331,7 @@ const STYLES = `
   }
   @media (max-width:479px){
     .grid-stats{grid-template-columns:1fr 1fr;gap:.7rem}
+    .grid-stats.three{grid-template-columns:1fr 1fr;gap:.7rem}
     .side-head .s{display:none}
   }
 </style>
@@ -409,20 +450,24 @@ export function card(content: string): string {
   return `<div class="card">${content}</div>`
 }
 
-export function statCard(label: string, iconName: string, hint = 'جاهز للبيانات'): string {
+export function statCard(label: string, iconName: string, value: string, hint = ''): string {
+  const hintHtml = hint ? `<div class="h">${escapeHtml(hint)}</div>` : ''
   return `
     <div class="stat">
       <div class="k">${shellIcon(iconName, 15)}<span>${escapeHtml(label)}</span></div>
-      <div class="v">—</div>
-      <div class="h">${escapeHtml(hint)}</div>
+      <div class="v">${escapeHtml(value)}</div>
+      ${hintHtml}
     </div>`
 }
 
-export function panel(title: string, iconName: string, body: string, soon = true): string {
-  const tag = soon ? '<span class="soon-tag">قيد التحضير</span>' : ''
+export type PanelOptions = { soon?: boolean; action?: string }
+
+export function panel(title: string, iconName: string, body: string, options: PanelOptions = {}): string {
+  const tag = options.soon ? '<span class="soon-tag">قيد التحضير</span>' : ''
+  const action = options.action ? `<div class="panel-action">${options.action}</div>` : ''
   return `
     <section class="panel">
-      <div class="panel-head"><span class="ico-chip">${shellIcon(iconName, 18)}</span><h2>${escapeHtml(title)}</h2>${tag}</div>
+      <div class="panel-head"><span class="ico-chip">${shellIcon(iconName, 18)}</span><h2>${escapeHtml(title)}</h2>${tag}${action}</div>
       <div class="panel-body">${body}</div>
     </section>`
 }
