@@ -1,0 +1,17 @@
+# Local wrangler config for `wrangler pages dev`.
+#
+# This file intentionally has NO `pages_build_output_dir`: dev passes the
+# project root (`.`) as the build directory, so serving static assets and
+# Functions together keeps working. Deployments via the Cloudflare dashboard
+# or `wrangler pages deploy` do not need this file.
+#
+# The R2 binding gives `wrangler pages dev` a real (local, simulated) R2
+# bucket so the private-delivery code paths run end to end without a
+# Cloudflare account. Production uses the real bucket of the same name.
+
+compatibility_date = "2026-09-24"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "photography-pixel-private"
+preview_bucket_name = "photography-pixel-private"

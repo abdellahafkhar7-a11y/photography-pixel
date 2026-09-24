@@ -1,0 +1,15 @@
+# Scheduled cleanup worker for Photography Pixel.
+# Runs every day at 03:00 UTC and POSTs to the guarded /__cleanup endpoint on
+# the Pages deployment, which expires due deliveries and deletes their R2
+# originals (bounded, idempotent, version-safe).
+
+name = "photography-pixel-cleanup"
+main = "./index.ts"
+compatibility_date = "2026-09-24"
+
+[triggers]
+crons = ["0 3 * * *"]
+
+# Set at deploy time (do not commit values):
+#   wrangler secret put CLEANUP_SECRET
+#   wrangler secret put CLEANUP_ENDPOINT
