@@ -74,15 +74,27 @@ deleted with cascade (0 deliveries / 0 videos / 0 activity rows remain). Seed cl
 were left in place as reference data. The only R2 object ever stored in the real bucket
 was the smoke-test upload, and it was deleted by the cleanup run; the real bucket is empty.
 
-## 5. Presigned URL path (authored streaming, opt-in)
+## 5. Presigned URL path (tried, then reverted — authorized streaming is active)
 
-Downloads work without presigned URLs via the authorized streaming proxy. To OPT-IN to
-short-lived presigned URL redirects, create an R2 API token scoped to
-`photography-pixel-client-delivery` (dashboard: R2 -> Manage R2 API Tokens -> Object
-Read/Write on `photography-pixel-client-delivery`), then set Pages env vars/secret:
-`R2_ENDPOINT` (plain, e.g. `https://<account-id>.r2.cloudflarestorage.com`),
-`R2_ACCESS_KEY_ID` (secrte_text), `R2_SECRET_ACCESS_KEY` (secret_text), redeploy.
-Without these vars the system stays on the fallback streaming path (identical RBAC gate).
+Downloads run through the authorized streaming proxy: the same RBAC token/status gate is
+enforced server-side, and the object streams through the function (`Content-Disposition:
+attachment`). No R2 credentials are configured in production, so the presign opt-in
+stays OFF (`r2PresignConfig` returns null and downloadTargetFor streams).
+
+Presign verification was attempted: credentials were set as Pages secrets via Wrangler
+(piped from a local scratch file, never printed) and the code generated a correct
+AWS4-HMAC-SHA256 presigned URL (host `<account>.r2.cloudflarestorage.com`,
+`X-Amz-Expires=300`). R2 rejected the signed fetch with `403 AccessDenied`
+(authorization, not signature mismatch), indicating the dashboard-created R2 API token
+lacked the required read scope for object GETs. Per the completion rule, the optional
+presign path was therefore skipped: the three R2 vars were removed from the Pages
+project with `wrangler pages secret delete`, and the verified streaming path is final.
+
+To re-enable later: create an R2 API token with Object Read **and** Write scoped to
+`photography-pixel-client-delivery`, set secrets `R2_ENDPOINT`
+(`https://<account-id>.r2.cloudflarestorage.com`), `R2_ACCESS_KEY_ID`,
+`R2_SECRET_ACCESS_KEY` via `wrangler pages secret put`, redeploy, and confirm a
+download returns a 302 to a 200-signed R2 URL before keeping it enabled.
 
 ## 6. Ops / rollback
 
