@@ -460,55 +460,90 @@ const STYLES = `
     .dropzone{padding:1.4rem .8rem}
   }
 
-  /* Login */
-  .auth-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.25rem;background:#24567D}
-  .auth-panel{width:90%;max-width:1300px;height:min(680px,calc(100dvh - 2.5rem));min-height:560px;display:flex;direction:ltr;flex-wrap:nowrap;overflow:hidden;border-radius:26px;background:var(--bg-primary);box-shadow:0 30px 80px -28px rgba(8,28,52,.6)}
-  .auth-brand{flex:0 1 49.5%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.1rem;padding:2.5rem 2rem;background:#3F7FF5;color:#fff;text-align:center}
-  .auth-logo{width:170px;height:170px;display:block;object-fit:contain;flex:none}
-  .auth-brand-name{font-size:1.15rem;font-weight:800;letter-spacing:.01em;color:#fff}
-  .auth-brand-sub{font-size:.85rem;color:rgba(255,255,255,.82)}
-  .auth-formpanel{flex:1 1 50.5%;min-width:0;direction:rtl;display:flex;align-items:center;justify-content:center;padding:2.5rem;background:var(--bg-primary)}
-  .auth-formwrap{width:100%;max-width:420px}
-  .auth-title{font-size:1.5rem;font-weight:800;color:var(--text-primary);letter-spacing:-.01em;line-height:1.3}
-  .auth-sub{color:var(--text-muted);font-size:.92rem;margin-top:.5rem}
-  .auth-alert{display:block;margin-top:1.4rem;padding:.8rem .95rem;border-radius:12px;background:rgba(212,60,90,.08);border:1px solid rgba(212,60,90,.22);color:#B33050;font-size:.87rem;line-height:1.6}
-  .auth-form{display:flex;flex-direction:column;gap:1.15rem;margin-top:1.75rem}
-  .auth-field{display:flex;flex-direction:column;gap:.45rem}
-  .auth-label{font-size:.86rem;font-weight:700;color:var(--text-secondary)}
-  .auth-input{width:100%;height:48px;padding:.6rem .95rem;background:#fff;border:1px solid var(--line-strong);border-radius:12px;color:var(--text-primary);font-size:.95rem;font-family:inherit;transition:border-color var(--transition-fast),box-shadow var(--transition-fast)}
-  .auth-input::placeholder{color:var(--text-subtle)}
-  .auth-input:hover{border-color:rgba(32,31,28,.32)}
-  .auth-input:focus{outline:none;border-color:#3F7FF5;box-shadow:0 0 0 3px rgba(63,127,245,.16)}
+  /* =========================================================
+     Login / auth — premium single-card entrance over a deep
+     Photography Pixel blue → royal blue → violet → magenta
+     gradient. Soft blurred light areas, subtle texture, no
+     animation. Placeholder → premium entrance for the admin.
+     ========================================================= */
+  .auth-page{position:relative;min-height:100vh;overflow:hidden;background:
+    radial-gradient(115% 95% at 10% -8%,rgba(64,116,232,.95) 0%,rgba(46,74,196,.3) 44%,rgba(12,32,92,0) 72%),
+    radial-gradient(110% 90% at 96% -6%,rgba(118,74,224,.9) 0%,rgba(84,50,170,.24) 46%,rgba(12,32,92,0) 74%),
+    radial-gradient(130% 110% at 50% 118%,rgba(214,88,168,.5) 0%,rgba(150,58,140,.16) 40%,rgba(12,32,92,0) 72%),
+    linear-gradient(158deg,#12408F 0%,#1E3C96 28%,#2B2F86 56%,#4A2D86 79%,#5E2F85 100%)}
+  .auth-bg{position:absolute;inset:0;z-index:0;pointer-events:none}
+  .auth-blob{position:absolute;border-radius:50%;filter:blur(70px)}
+  .auth-blob-1{width:560px;height:560px;top:-180px;inset-inline-start:-160px;background:radial-gradient(circle at 40% 40%,rgba(96,148,255,.55),rgba(96,148,255,0) 70%)}
+  .auth-blob-2{width:500px;height:500px;top:-120px;inset-inline-end:-150px;background:radial-gradient(circle at 50% 45%,rgba(158,110,255,.5),rgba(158,110,255,0) 70%)}
+  .auth-blob-3{width:620px;height:620px;bottom:-260px;inset-inline-start:50%;transform:translateX(-50%);background:radial-gradient(circle at 50% 55%,rgba(255,120,190,.34),rgba(255,120,190,0) 70%)}
+  .auth-texture{position:absolute;inset:0;background:
+    radial-gradient(1.5px 1.5px at 25% 35%,rgba(255,255,255,.14),transparent 100%),
+    radial-gradient(1.5px 1.5px at 70% 20%,rgba(255,255,255,.11),transparent 100%),
+    radial-gradient(2px 2px at 55% 80%,rgba(255,255,255,.1),transparent 100%),
+    linear-gradient(115deg,rgba(255,255,255,.08),rgba(255,255,255,0) 45%)}
+  .auth-shell{position:relative;z-index:1;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem 1rem 3.6rem}
+  .auth-card{position:relative;width:min(436px,100%);padding:38px 40px 30px;border-radius:27px;background:rgba(255,255,255,.97);border:1px solid rgba(255,255,255,.75);box-shadow:0 30px 80px -28px rgba(9,22,64,.55),0 6px 22px -10px rgba(9,22,64,.25);display:flex;flex-direction:column;align-items:center;text-align:center}
+  .auth-card::before{content:"";position:absolute;inset:-2px;z-index:-1;border-radius:28px;background:linear-gradient(140deg,rgba(255,255,255,.9),rgba(226,230,246,.95));filter:blur(14px);opacity:.55}
+  .auth-logo{width:92px;height:92px;object-fit:contain;flex:none}
+  .auth-head{margin-top:.9rem}
+  .auth-brand-name{display:block;font-size:1.12rem;font-weight:800;letter-spacing:.01em;color:#1A2140}
+  .auth-brand-sub{display:block;margin-top:.18rem;font-size:.85rem;color:#6E7590}
+  .auth-title{font-size:1.45rem;font-weight:800;letter-spacing:-.01em;line-height:1.3;color:#161D36;margin-top:1.25rem}
+  .auth-sub{font-size:.9rem;line-height:1.75;color:#71788F;margin-top:.38rem;max-width:30rem}
+  .auth-alert{display:block;width:100%;margin-top:1.15rem;padding:.78rem .9rem;border-radius:13px;background:rgba(212,60,90,.07);border:1px solid rgba(212,60,90,.2);color:#B33050;font-size:.87rem;line-height:1.6;text-align:right}
+  .auth-success{display:block;width:100%;margin-top:1.15rem;padding:.78rem .9rem;border-radius:13px;background:rgba(40,167,112,.07);border:1px solid rgba(40,167,112,.22);color:#147A4B;font-size:.87rem;line-height:1.6;text-align:right}
+  .auth-form{width:100%;display:flex;flex-direction:column;gap:.9rem;margin-top:1.35rem;text-align:right}
+  .auth-field{display:flex;flex-direction:column;gap:.42rem}
+  .auth-label{font-size:.86rem;font-weight:700;color:#3A4158}
+  .auth-input-wrap{position:relative;display:flex;align-items:center}
+  .auth-input-icon{position:absolute;inset-inline-start:1.05rem;display:inline-flex;color:#97A0B8;pointer-events:none}
+  .auth-input{width:100%;height:52px;padding:.68rem 1.05rem;background:#F5F6FB;border:1px solid #E5E8F2;border-radius:13px;color:#161D36;font-size:.95rem;font-family:inherit;transition:border-color .18s ease,background .18s ease,box-shadow .18s ease}
+  .auth-input::placeholder{color:#9AA2B8}
+  .auth-input:hover{border-color:#D3D8E8}
+  .auth-input:focus{outline:none;border-color:#6A5BFF;background:#fff;box-shadow:0 0 0 4px rgba(106,91,255,.14)}
+  .auth-input-wrap .auth-input{padding-inline:2.9rem 1.05rem}
+  .auth-password-wrap .auth-input{padding-inline:2.9rem 3.3rem}
   .auth-input[dir=ltr]{text-align:left}
-  .auth-btn{display:inline-flex;align-items:center;justify-content:center;width:100%;height:48px;padding:0 1.2rem;background:#3F7FF5;color:#fff;border:1px solid transparent;border-radius:12px;font-size:.95rem;font-weight:750;font-family:inherit;cursor:pointer;transition:filter var(--transition-fast),transform .06s ease}
-  .auth-btn:hover{filter:brightness(1.07)}
-  .auth-btn:active{transform:translateY(1px);filter:brightness(.96)}
-  .auth-btn:focus-visible{outline:2px solid #3F7FF5;outline-offset:2px}
-  .auth-btn:disabled{background:#B9C6D4;color:#fff;cursor:default;transform:none;filter:none}
-  .auth-link-row{text-align:center;margin-top:-.3rem}
-  .auth-link{font-size:.85rem;font-weight:700;color:#3F7FF5;text-decoration:none}
+  .auth-eye{position:absolute;inset-inline-end:.45rem;display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border:none;background:transparent;color:#8A91A8;cursor:pointer;border-radius:10px;transition:color .15s ease}
+  .auth-eye:hover{color:#4A5270}
+  .auth-eye:focus-visible{outline:2px solid #6A5BFF;outline-offset:1px}
+  .auth-eye .eye-ico{display:inline-flex}
+  .auth-forgot{display:flex;justify-content:flex-start;margin-top:-.15rem}
+  .auth-link{font-size:.85rem;font-weight:700;color:#5B4DE6;text-decoration:none}
   .auth-link:hover{text-decoration:underline}
-  .auth-success{display:block;margin-top:1.4rem;padding:.8rem .95rem;border-radius:12px;background:rgba(40,167,112,.09);border:1px solid rgba(40,167,112,.25);color:#147A4B;font-size:.87rem;line-height:1.6}
+  .auth-link-row{text-align:center;margin-top:-.1rem}
+  .auth-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:.55rem;width:100%;height:52px;padding:0 1.2rem;border:none;border-radius:13px;background:linear-gradient(135deg,#2560E0 0%,#4E52E8 48%,#7A45EE 100%);color:#fff;font-size:.97rem;font-weight:750;font-family:inherit;cursor:pointer;box-shadow:0 12px 26px -12px rgba(58,58,220,.55);transition:filter .18s ease,transform .08s ease,box-shadow .18s ease}
+  .auth-btn:hover{filter:brightness(1.06);transform:translateY(-1px);box-shadow:0 16px 32px -12px rgba(58,58,220,.62)}
+  .auth-btn:active{transform:translateY(0);filter:brightness(.98)}
+  .auth-btn:focus-visible{outline:2px solid #7A45EE;outline-offset:2px}
+  .auth-btn:disabled{background:#B9C3D8;color:#fff;cursor:default;transform:none;box-shadow:none;filter:none}
+  .auth-spinner{display:none;width:17px;height:17px;margin-inline-end:.1rem;border:2.5px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:authspin .7s linear infinite}
+  .auth-btn.loading .auth-spinner{display:inline-block}
+  @keyframes authspin{to{transform:rotate(360deg)}}
+  .auth-editorial{margin-top:1.5rem;font-size:.56rem;font-weight:700;letter-spacing:.3em;color:#B3B9CC;text-transform:uppercase}
+  .auth-footer{position:fixed;inset-inline:0;bottom:0;z-index:2;padding:1.05rem 1rem 1.15rem;text-align:center;font-size:.78rem;color:rgba(255,255,255,.85);text-shadow:0 1px 8px rgba(9,22,64,.35)}
   .field{display:block;margin-bottom:1.1rem}
   .field label{display:block;font-weight:700;font-size:.88rem;margin-bottom:.4rem;color:var(--text-secondary)}
   .field input{width:100%;padding:.68rem .85rem;background:#fff;border:1px solid var(--line-strong);border-radius:var(--radius-md);color:var(--text-primary);font-size:.95rem;font-family:inherit}
   .field input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
   .alert{padding:.78rem 1rem;border-radius:var(--radius-md);font-size:.88rem;margin-bottom:1.15rem}
   .alert.error{background:rgba(179,71,63,.07);color:var(--error);border:1px solid rgba(179,71,63,.24)}
-  @media (max-width:920px){
-    .auth-page{padding:1rem}
-    .auth-panel{width:100%;max-width:520px;height:auto;min-height:calc(100dvh - 2rem);flex-direction:column;border-radius:24px}
-    .auth-brand{flex:none;width:100%;height:250px;padding:1.6rem 1.25rem;gap:.8rem}
-    .auth-logo{width:110px;height:110px}
-    .auth-brand-name{font-size:1.02rem}
-    .auth-brand-sub{font-size:.8rem}
-    .auth-formpanel{flex:1;padding:2.1rem 1.5rem 2.4rem}
-    .auth-title{font-size:1.4rem}
+  @media (max-width:520px){
+    .auth-shell{padding:1rem .75rem 3.4rem}
+    .auth-card{width:calc(100% - 32px);padding:28px 20px 24px;border-radius:24px}
+    .auth-logo{width:80px;height:80px}
+    .auth-head{margin-top:.65rem}
+    .auth-title{margin-top:.95rem;font-size:1.32rem}
+    .auth-sub{margin-top:.32rem}
+    .auth-form{gap:.75rem;margin-top:1.1rem}
+    .auth-field{gap:.38rem}
+    .auth-btn,.auth-input{height:50px}
+    .auth-editorial{margin-top:1.1rem}
+    .auth-alert,.auth-success{margin-top:1.05rem}
   }
-  @media (max-width:400px){
-    .auth-brand{height:225px}
-    .auth-formpanel{padding:1.8rem 1.15rem 2rem}
-    .auth-input,.auth-btn{height:46px}
+  @media (max-width:360px){
+    .auth-logo{width:64px;height:64px}
+    .auth-title{font-size:1.26rem}
   }
 
   @media (max-width:991px){
@@ -560,49 +595,65 @@ export function avatarFor(user: Pick<AppUserRow, 'id' | 'full_name' | 'avatar_ke
 // Login page
 //--------------------------------------------------------------------------
 
-const LOGIN_SCRIPT = `<script>(function(){var form=document.getElementById('auth-form');var btn=document.getElementById('auth-submit');if(!form||!btn)return;form.addEventListener('submit',function(){if(btn.disabled)return;btn.disabled=true;btn.textContent='جارٍ التحقق…';});})();</script>`
+const AUTH_MAIL_ICON = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.6"/><path d="m3.5 7 8.5 6 8.5-6"/></svg>`
+const AUTH_LOCK_ICON = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="9.5" rx="2.4"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/><circle cx="12" cy="15" r="1.3"/></svg>`
+const AUTH_EYE_ICON = `<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12S6 4.8 12 4.8 21.5 12 21.5 12 18 19.2 12 19.2 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/></svg>`
+const AUTH_EYE_OFF_ICON = `<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3.5 3.5 17 17"/><path d="M10.6 6.1a13 13 0 0 1 1.4-.1c6 0 9.5 6 9.5 6a16.4 16.4 0 0 1-3 3.5"/><path d="M6.6 6.8A15.8 15.8 0 0 0 2.5 12s3.5 6 9.5 6c1.1 0 2.1-.2 3-.5"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>`
+const LOGIN_AUTH_BG = `
+    <div class="auth-bg" aria-hidden="true">
+      <div class="auth-blob auth-blob-1"></div>
+      <div class="auth-blob auth-blob-2"></div>
+      <div class="auth-blob auth-blob-3"></div>
+      <div class="auth-texture" aria-hidden="true"></div>
+    </div>
+    <main class="auth-shell">
+      <div class="auth-card">
+        <img class="auth-logo" src="/assets/images/photography-pixel-logo.png" alt="شعار Photography Pixel" width="96" height="96" decoding="async">
+        <div class="auth-head">
+          <span class="auth-brand-name">Photography Pixel</span>
+          <span class="auth-brand-sub">لوحة إدارة المعرض</span>
+        </div>`
+const LOGIN_AUTH_CLOSE = `
+        <div class="auth-editorial" dir="ltr">Photography Pixel · creative production</div>
+      </div>
+    </main>
+    <footer class="auth-footer">© Photography Pixel · لوحة إدارة المعرض</footer>`
+
+const LOGIN_SCRIPT = `<script>(function(){var form=document.getElementById('auth-form');var btn=document.getElementById('auth-submit');var eye=document.getElementById('auth-eye');var pass=document.getElementById('auth-password');if(eye&&pass){var on=eye.querySelector('.eye-ico-on'),off=eye.querySelector('.eye-ico-off');var apply=function(show){pass.type=show?'text':'password';eye.setAttribute('aria-pressed',show?'true':'false');eye.setAttribute('aria-label',show?'إخفاء كلمة المرور':'إظهار كلمة المرور');if(on)on.hidden=show;if(off)off.hidden=!show};apply(false);eye.addEventListener('click',function(){apply(pass.type==='password')})}if(form&&btn){form.addEventListener('submit',function(){if(btn.disabled)return;var label=btn.querySelector('.btn-label');btn.disabled=true;btn.classList.add('loading');if(label)label.textContent=label.textContent.trim()+'…'})}})();<\/script>`
 
 export function loginPage(error?: string): string {
   const err = error ? escapeHtml(error) : ''
-  const content = `
-    <div class="auth-panel">
-      <div class="auth-brand">
-        <img class="auth-logo" src="/assets/images/photography-pixel-logo.png" alt="شعار Photography Pixel" width="170" height="170" decoding="async">
-        <span class="auth-brand-name">Photography Pixel</span>
-        <span class="auth-brand-sub">لوحة إدارة الوكالة</span>
-      </div>
-      <main class="auth-formpanel">
-        <div class="auth-formwrap">
-          <h1 class="auth-title">تسجيل الدخول</h1>
-          <p class="auth-sub">مرحباً بك في لوحة تحكم Photography Pixel</p>
-          ${err ? `<div class="auth-alert" role="alert">${err}</div>` : ''}
-          <form method="post" action="/admin/login" autocomplete="on" id="auth-form" class="auth-form">
-            <label class="auth-field">
-              <span class="auth-label">البريد الإلكتروني</span>
-              <input class="auth-input" type="email" name="email" required autocomplete="username" autofocus dir="ltr" placeholder="name@example.com">
-            </label>
-            <label class="auth-field">
-              <span class="auth-label">كلمة المرور</span>
-              <input class="auth-input" type="password" name="password" required autocomplete="current-password">
-            </label>
-            <button class="auth-btn" type="submit" id="auth-submit">تسجيل الدخول</button>
-            <p class="auth-link-row"><a class="auth-link" href="/admin/recover">نسيت كلمة المرور؟</a></p>
-          </form>
-        </div>
-      </main>
-    </div>`
+  const content = `${LOGIN_AUTH_BG}
+        <h1 class="auth-title">تسجيل الدخول</h1>
+        <p class="auth-sub">مرحباً بك في لوحة تحكم Photography Pixel</p>
+        ${err ? `<div class="auth-alert" role="alert">${err}</div>` : ''}
+        <form method="post" action="/admin/login" autocomplete="on" id="auth-form" class="auth-form">
+          <label class="auth-field">
+            <span class="auth-label">البريد الإلكتروني</span>
+            <span class="auth-input-wrap">
+              <span class="auth-input-icon" aria-hidden="true">${AUTH_MAIL_ICON}</span>
+              <input class="auth-input" type="email" name="email" required autocomplete="email" autofocus dir="ltr" placeholder="أدخل البريد الإلكتروني">
+            </span>
+          </label>
+          <label class="auth-field">
+            <span class="auth-label">كلمة المرور</span>
+            <span class="auth-input-wrap auth-password-wrap">
+              <span class="auth-input-icon" aria-hidden="true">${AUTH_LOCK_ICON}</span>
+              <input class="auth-input" id="auth-password" type="password" name="password" required autocomplete="current-password" placeholder="أدخل كلمة المرور">
+              <button type="button" class="auth-eye" id="auth-eye" aria-label="إظهار كلمة المرور" aria-pressed="false">
+                <span class="eye-ico eye-ico-on" aria-hidden="true">${AUTH_EYE_ICON}</span>
+                <span class="eye-ico eye-ico-off" aria-hidden="true" hidden>${AUTH_EYE_OFF_ICON}</span>
+              </button>
+            </span>
+          </label>
+          <p class="auth-forgot"><a class="auth-link" href="/admin/recover">نسيت كلمة المرور؟</a></p>
+          <button class="auth-btn" type="submit" id="auth-submit"><span class="btn-label">تسجيل الدخول</span><span class="auth-spinner" aria-hidden="true"></span></button>
+        </form>
+        ${LOGIN_AUTH_CLOSE}`
   return htmlDoc('تسجيل الدخول', 'auth-page', content, LOGIN_SCRIPT)
 }
 
-const AUTH_FORM_OPEN = `
-    <div class="auth-panel">
-      <div class="auth-brand">
-        <img class="auth-logo" src="/assets/images/photography-pixel-logo.png" alt="شعار Photography Pixel" width="170" height="170" decoding="async">
-        <span class="auth-brand-name">Photography Pixel</span>
-        <span class="auth-brand-sub">لوحة إدارة الوكالة</span>
-      </div>
-      <main class="auth-formpanel">
-        <div class="auth-formwrap">`
+const AUTH_FORM_OPEN = LOGIN_AUTH_BG
 
 // Password recovery (Phase 4M): the admin sends a password-reset link to their
 // own email exactly like normal staff accounts. Reset links are one-time and
@@ -613,19 +664,22 @@ export function recoverPage(error?: string, sentEmail?: string): string {
     ? `<div class="auth-success" role="status">أرسلنا رابط استعادة كلمة المرور إلى <strong dir="ltr">${escapeHtml(sentEmail)}</strong>. تحقّق من بريدك واتبع الرابط لإعادة تعيين كلمة المرور.</div>`
     : ''
   const content = `${AUTH_FORM_OPEN}
-        <h1 class="auth-title">استعادة كلمة المرور</h1>
-        <p class="auth-sub">اكتب بريدك الإلكتروني وسنرسل لك رابطاً لإعادة التعيين.</p>
-        ${err ? `<div class="auth-alert" role="alert">${err}</div>` : ''}
-        ${sent}
-        <form method="post" action="/admin/recover" autocomplete="on" class="auth-form" id="auth-form">
-          <label class="auth-field">
-            <span class="auth-label">البريد الإلكتروني</span>
-            <input class="auth-input" type="email" name="email" required autocomplete="username" dir="ltr" placeholder="name@example.com">
-          </label>
-          <button class="auth-btn" type="submit" id="auth-submit">إرسال رابط الاستعادة</button>
-          <p class="auth-link-row"><a class="auth-link" href="/admin/login">العودة إلى تسجيل الدخول</a></p>
-        </form>
-      </div></main></div>`
+          <h1 class="auth-title">استعادة كلمة المرور</h1>
+          <p class="auth-sub">اكتب بريدك الإلكتروني وسنرسل لك رابطاً لإعادة التعيين.</p>
+          ${err ? `<div class="auth-alert" role="alert">${err}</div>` : ''}
+          ${sent}
+          <form method="post" action="/admin/recover" autocomplete="on" class="auth-form" id="auth-form">
+            <label class="auth-field">
+              <span class="auth-label">البريد الإلكتروني</span>
+              <span class="auth-input-wrap">
+                <span class="auth-input-icon" aria-hidden="true">${AUTH_MAIL_ICON}</span>
+                <input class="auth-input" type="email" name="email" required autocomplete="email" dir="ltr" placeholder="أدخل البريد الإلكتروني">
+              </span>
+            </label>
+            <button class="auth-btn" type="submit" id="auth-submit"><span class="btn-label">إرسال رابط الاستعادة</span><span class="auth-spinner" aria-hidden="true"></span></button>
+            <p class="auth-link-row"><a class="auth-link" href="/admin/login">العودة إلى تسجيل الدخول</a></p>
+          </form>
+        ${LOGIN_AUTH_CLOSE}`
   return htmlDoc('استعادة كلمة المرور', 'auth-page', content, LOGIN_SCRIPT)
 }
 
@@ -636,23 +690,23 @@ export function resetPage(error?: string, notice?: string): string {
   const err = error ? escapeHtml(error) : ''
   const n = notice ? `<div class="auth-success" role="status">${escapeHtml(notice)}</div>` : ''
   const content = `${AUTH_FORM_OPEN}
-        <h1 class="auth-title">كلمة مرور جديدة</h1>
-        <p class="auth-sub">أدخل كلمة المرور الجديدة لحسابك في لوحة التحكم.</p>
-        ${err ? `<div class="auth-alert" role="alert">${err}</div>` : ''}
-        ${n}
-        <form method="post" action="/admin/reset" autocomplete="new-password" class="auth-form" id="auth-form">
-          <label class="auth-field">
-            <span class="auth-label">كلمة المرور الجديدة</span>
-            <input class="auth-input" type="password" name="password" required minlength="8" autocomplete="new-password">
-          </label>
-          <label class="auth-field">
-            <span class="auth-label">تأكيد كلمة المرور</span>
-            <input class="auth-input" type="password" name="confirm" required minlength="8" autocomplete="new-password">
-          </label>
-          <button class="auth-btn" type="submit" id="auth-submit">حفظ كلمة المرور</button>
-          <p class="auth-link-row"><a class="auth-link" href="/admin/login">العودة إلى تسجيل الدخول</a></p>
-        </form>
-      </div></main></div>`
+          <h1 class="auth-title">كلمة مرور جديدة</h1>
+          <p class="auth-sub">أدخل كلمة المرور الجديدة لحسابك في لوحة التحكم.</p>
+          ${err ? `<div class="auth-alert" role="alert">${err}</div>` : ''}
+          ${n}
+          <form method="post" action="/admin/reset" autocomplete="new-password" class="auth-form" id="auth-form">
+            <label class="auth-field">
+              <span class="auth-label">كلمة المرور الجديدة</span>
+              <input class="auth-input" type="password" name="password" required minlength="8" autocomplete="new-password">
+            </label>
+            <label class="auth-field">
+              <span class="auth-label">تأكيد كلمة المرور</span>
+              <input class="auth-input" type="password" name="confirm" required minlength="8" autocomplete="new-password">
+            </label>
+            <button class="auth-btn" type="submit" id="auth-submit"><span class="btn-label">حفظ كلمة المرور</span><span class="auth-spinner" aria-hidden="true"></span></button>
+            <p class="auth-link-row"><a class="auth-link" href="/admin/login">العودة إلى تسجيل الدخول</a></p>
+          </form>
+        ${LOGIN_AUTH_CLOSE}`
   return htmlDoc('كلمة مرور جديدة', 'auth-page', content, LOGIN_SCRIPT)
 }
 

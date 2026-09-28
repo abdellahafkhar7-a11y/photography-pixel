@@ -29,8 +29,8 @@ const ERROR_MESSAGES: Record<string, string> = {
 }
 
 export function renderLogin(error?: string): string {
-  const code = error ?? 'invalid'
-  return loginPage(ERROR_MESSAGES[code] ?? ERROR_MESSAGES.invalid)
+  if (!error) return loginPage()
+  return loginPage(ERROR_MESSAGES[error] ?? ERROR_MESSAGES.invalid)
 }
 
 const DATE_TIME = new Intl.DateTimeFormat('ar-MA', {
