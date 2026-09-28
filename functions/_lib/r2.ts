@@ -7,18 +7,37 @@ export function sanitizeFileName(filename: string | null): string {
   return cleaned.length > 0 && !cleaned.startsWith('.') ? cleaned : 'original.mp4'
 }
 
-// Versioned object keys. Every version has its own namespace, so cleanup of an
-// older version's original can never touch a newer replacement's objects.
-export function originalKey(deliveryId: string, version: number, filename: string | null): string {
-  return `originals/${deliveryId}/${version}/${sanitizeFileName(filename)}`
+// Versioned object keys. Every item+version has its own namespace, so cleanup
+// of an older version's original can never touch a newer replacement's objects
+// and two distinct videos in the same delivery never collide.
+export function originalKey(
+  deliveryId: string,
+  itemPos: number,
+  version: number,
+  filename: string | null,
+): string {
+  return `originals/${deliveryId}/${itemPos}/${version}/${sanitizeFileName(filename)}`
 }
 
-export function previewKey(deliveryId: string, version: number): string {
-  return `previews/${deliveryId}/${version}/preview_watermarked.mp4`
+export function previewKey(deliveryId: string, itemPos: number, version: number): string {
+  return `previews/${deliveryId}/${itemPos}/${version}/preview_watermarked.mp4`
 }
 
-export function thumbKey(deliveryId: string, version: number): string {
-  return `thumbs/${deliveryId}/${version}/cover.jpg`
+export function thumbKey(deliveryId: string, itemPos: number, version: number): string {
+  return `thumbs/${deliveryId}/${itemPos}/${version}/cover.jpg`
+}
+
+//----------------------------------------------------------------------------
+// Upload limits (Phase 4I). The client uploader never buffers the whole file
+// in memory server-side: it splits into fixed parts that are each streamed to
+// the bucket, or streams the body directly (emulator fallback).
+//----------------------------------------------------------------------------
+
+export const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024 // 1 GB per video
+export const UPLOAD_PART_SIZE = 32 * 1024 * 1024 // 32 MiB per part
+
+export function maxUploadParts(): number {
+  return Math.ceil(MAX_UPLOAD_BYTES / UPLOAD_PART_SIZE)
 }
 
 //----------------------------------------------------------------------------

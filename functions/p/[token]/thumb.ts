@@ -1,6 +1,6 @@
 import type { PagesFunction } from '@cloudflare/workers-types'
 import type { DeliveryEnv } from '../../_lib/env'
-import { isValidTokenFormat } from '../../_lib/tokens'
+import { isValidTokenFormat, splitStableToken } from '../../_lib/tokens'
 import { resolvePrivateDelivery, tokenIsActive } from '../_client'
 import { noStoreResponse, streamObject } from '../_media'
 
@@ -8,7 +8,7 @@ type Route = PagesFunction<DeliveryEnv, 'token', Record<string, unknown>>
 
 export const onRequestGet: Route = async (context) => {
   const token = String((context.params as { token: string }).token)
-  if (!isValidTokenFormat(token)) return noStoreResponse(404)
+  if (!isValidTokenFormat(splitStableToken(token).secret)) return noStoreResponse(404)
 
   const resolved = await resolvePrivateDelivery(context.env, token)
   if (resolved.kind !== 'ok') return noStoreResponse(404)

@@ -1,193 +1,32 @@
 import type { PagesFunction } from '@cloudflare/workers-types'
-import { html, requireOwner, requireSession } from '../../_lib/auth'
+import { requireOwner, requireSession } from '../../_lib/auth'
 import type { DeliveryEnv } from '../../../_lib/env'
 import { siteUrl } from '../../../_lib/env'
-import type { RoleKey } from '../../../_lib/db-types'
+import type { AppUserRow } from '../../_lib/types'
 import { sameOrigin } from '../../_lib/security'
-import {
-  adminTopbar,
-  brandPage,
-  escapeHtml,
-  formatDateTime,
-  icon,
-  sourcePillHtml,
-  statusBadgeHtml,
-  COPY_SCRIPT,
-} from '../../../_lib/brand'
 import { generatePrivateToken, hashPrivateToken } from '../../../_lib/tokens'
-import { deliveryShareWaLink } from '../../../_lib/whatsapp'
+import { recordActivity } from '../../../_lib/activities'
+import { renderDeliveryDetail, type DetailPageOptions } from '../../_lib/delivery-views'
 import {
-  ACTIVITY_LABEL,
   adminHtml,
   formString,
   isValidUuid,
   loadDeliveryDetail,
+  loadPortfolioCatalog,
+  resolveClient,
   serviceFrom,
   type DeliveryDetail,
 } from '../_helpers'
 
 type Route = PagesFunction<DeliveryEnv, never, Record<string, unknown>>
 
-function roleOf(roleKey: string): RoleKey {
-  return roleKey === 'owner' ? 'owner' : 'coordinator'
-}
-
-function formatBytes(bytes: number | null): string {
-  if (!bytes) return '—'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function linkCardHtml(base: string, token: string, whatsapp: string): string {
-  const privateLink = `${base}/p/${token}`
-  return `<div class="card">
-    <div class="between"><h2>رابط التوصيل</h2><span class="pill">يظهر مرة واحدة فقط</span></div>
-    <div class="linkbox"><span dir="ltr">${escapeHtml(privateLink)}</span><button class="btn btn-subtle copy" data-copy="${escapeHtml(privateLink)}">${icon('copy')} نسخ الرابط</button></div>
-    <p class="hint" style="margin-top:.5rem">شارك الرابط مع العميل عبر واتساب. النظام يحفظ نسخة مشفرة فقط من الرابط.</p>
-    <div class="actionbar">
-      <a class="btn btn-success" href="${escapeHtml(deliveryShareWaLink(whatsapp, privateLink))}" target="_blank" rel="noreferrer noopener">${icon('whatsapp')} فتح واتساب مع الرابط</a>
-    </div>
-  </div>`
-}
-
-export type DetailPageOptions = {
-  freshToken?: string
-  notice?: string
-  error?: string
-}
-
-function renderDetailPageHtml(
-  role: RoleKey,
-  base: string,
-  detail: DeliveryDetail | null,
-  options: DetailPageOptions = {},
-): string {
-  if (!detail) {
-    const message = options.error ?? 'تعذّر تحميل التوصيل.'
-    return brandPage(
-      'تفاصيل التوصيل',
-      `${adminTopbar('deliveries', role)}
-      <div class="card"><h1>${escapeHtml(message)}</h1>
-      <div class="actionbar"><a class="btn btn-subtle" href="/admin/deliveries">الرجوع إلى التوصيلات</a></div></div>`,
-    )
-  }
-
-  const client = detail.clients
-  const whatsapp = client?.whatsapp_number ?? ''
-  const clientName = client && client.name.trim().length > 0 ? client.name.trim() : 'عميل محذوف'
-  const videos = detail.delivery_videos ?? []
-  const active = videos.find((video) => video.is_active) ?? null
-  const isOwner = role === 'owner'
-  const expired = detail.status === 'expired'
-
-  const alerts = []
-  if (options.notice) alerts.push(`<div class="alert success">${escapeHtml(options.notice)}</div>`)
-  if (options.error) alerts.push(`<div class="alert error">${escapeHtml(options.error)}</div>`)
-  if (expired) {
-    alerts.push(
-      `<div class="alert error">${icon('clock', 16)} التوصيل منتهي — لا يمكن فتح الرابط ولا التحميل.`
-      + `${isOwner && detail.source_type === 'r2' ? ' يمكن رفع نسخة جديدة لإعادة تنشيطه.' : ''}</div>`,
-    )
-  } else if (detail.source_type === 'r2' && !active && isOwner) {
-    alerts.push(`<div class="alert info">لم يُرفَع الفيديو الخاص بعد. ارفع النسخة الأولى ليظهر الرابط للعميل.</div>`)
-  }
-  const alertHtml = alerts.join('')
-
-  let shareCard: string
-  if (options.freshToken) {
-    shareCard = linkCardHtml(base, options.freshToken, whatsapp)
-  } else {
-    shareCard = `<div class="card">
-      <h2>رابط التوصيل</h2>
-      <p class="muted">الرابط الخاص ذُكر مرة واحدة عند الإنشاء ولا يمكن استرجاعه.</p>
-      ${isOwner && !expired ? `<div class="actionbar" style="margin-top:1rem">
-          <form method="post"><input type="hidden" name="action" value="regenerate"><button class="btn btn-subtle" type="submit">${icon('refresh', 16)} إنشاء رابط جديد</button></form>
-          <form method="post" onsubmit="return confirm('إلغاء الرابط الحالي؟ لن يتمكن العميل من فتحه بعد الآن.')"><input type="hidden" name="action" value="revoke"><button class="btn btn-danger" type="submit">${icon('ban', 16)} إلغاء الرابط</button></form>
-        </div>` : ''}
-      ${isOwner && detail.source_type === 'r2'
-        ? `<div class="actionbar" style="margin-top:.6rem"><a class="btn btn-primary" href="/admin/deliveries/${detail.id}/upload">${icon('upload', 16)} ${active ? 'رفع نسخة جديدة' : 'رفع الفيديو'}</a></div>`
-        : ''}
-    </div>`
-  }
-
-  const versionRows =
-    videos.length === 0
-      ? `<tr><td colspan="4"><p class="muted" style="padding:.5rem 0">لا يوجد فيديو بعد.</p></td></tr>`
-      : videos
-          .map((video) => {
-            const badge = video.is_active
-              ? `<span class="badge st-confirmed">النسخة النشطة</span>`
-              : `<span class="badge st-pending">نسخة سابقة</span>`
-            const statusLine = video.original_deleted_at
-              ? `<p class="hint">حُذف الملف الأصلي من التخزين بعد انتهاء التحميل.</p>`
-              : ''
-            return `<tr><td>النسخة ${video.version}</td><td>${sourcePillHtml(video.source_type)}</td><td>${badge}${statusLine}</td><td>${escapeHtml(formatDateTime(video.created_at))}<br><span class="hint">${formatBytes(video.size_bytes)}</span></td></tr>`
-          })
-          .join('')
-
-  const activityRows =
-    detail.delivery_activity.length === 0
-      ? `<tr><td colspan="2"><p class="muted" style="padding:.5rem 0">لا يوجد نشاط بعد.</p></td></tr>`
-      : detail.delivery_activity
-          .slice(0, 30)
-          .map(
-            (event) =>
-              `<tr><td>${escapeHtml(ACTIVITY_LABEL[event.type] ?? event.type)}</td><td>${escapeHtml(formatDateTime(event.created_at))}</td></tr>`,
-          )
-          .join('')
-
-  const page = brandPage(
-    'تفاصيل التوصيل',
-    `${adminTopbar('deliveries', role)}
-     <div class="between" style="margin-bottom:1.25rem">
-       <div>
-         <p class="muted" style="margin-bottom:.3rem"><a href="/admin/deliveries">← التوصيلات</a></p>
-         <h1>${escapeHtml(clientName)}</h1>
-         <div class="row" style="margin-top:.4rem">${sourcePillHtml(detail.source_type)} ${statusBadgeHtml(detail.status)}</div>
-       </div>
-     </div>
-     ${alertHtml}
-     ${shareCard}
-     <div class="card">
-       <h2>معلومات العميل</h2>
-       <div class="stat-grid">
-         <div class="stat-cell"><div class="label">الاسم</div><div class="value">${escapeHtml(client?.name ?? '—')}</div></div>
-         <div class="stat-cell"><div class="label">واتساب</div><div class="value" dir="ltr">${escapeHtml(whatsapp || '—')}</div></div>
-         <div class="stat-cell"><div class="label">تاريخ الإنشاء</div><div class="value">${escapeHtml(formatDateTime(detail.created_at))}</div></div>
-       </div>
-     </div>
-     <div class="card">
-       <h2>النسخ</h2>
-       <table class="tbl"><thead><tr><th>النسخة</th><th>المصدر</th><th>الحالة</th><th>التفاصيل</th></tr></thead><tbody>${versionRows}</tbody></table>
-     </div>
-     <div class="card">
-       <h2>الحالة والجداول الزمنية</h2>
-       <div class="stat-grid">
-         <div class="stat-cell"><div class="label">الحالة</div><div class="value">${statusBadgeHtml(detail.status)}</div></div>
-         <div class="stat-cell"><div class="label">تاريخ الإنشاء</div><div class="value">${escapeHtml(formatDateTime(detail.created_at))}</div></div>
-         <div class="stat-cell"><div class="label">تاريخ التأكيد</div><div class="value">${detail.confirmed_at ? escapeHtml(formatDateTime(detail.confirmed_at)) : '—'}</div></div>
-         <div class="stat-cell"><div class="label">أول تحميل</div><div class="value">${detail.downloaded_at ? escapeHtml(formatDateTime(detail.downloaded_at)) : '—'}</div></div>
-         <div class="stat-cell"><div class="label">آخر موعد للتحميل</div><div class="value">${detail.download_expires_at ? escapeHtml(formatDateTime(detail.download_expires_at)) : '—'}</div></div>
-         <div class="stat-cell"><div class="label">الانتهاء</div><div class="value">${detail.expired_at ? escapeHtml(formatDateTime(detail.expired_at)) : '—'}</div></div>
-       </div>
-     </div>
-     <div class="card">
-       <h2>سجل النشاط</h2>
-       <table class="tbl"><thead><tr><th>الحدث</th><th>التاريخ</th></tr></thead><tbody>${activityRows}</tbody></table>
-     </div>${COPY_SCRIPT}`,
-    { wide: true },
-  )
-  return page
-}
-
 export function renderDetailPage(
-  role: RoleKey,
+  appUser: AppUserRow,
   base: string,
   detail: DeliveryDetail | null,
   options: DetailPageOptions = {},
 ): string {
-  return renderDetailPageHtml(role, base, detail, options)
+  return renderDeliveryDetail(appUser, base, detail, options)
 }
 
 function loadId(context: { params: unknown }): string {
@@ -198,18 +37,19 @@ function loadId(context: { params: unknown }): string {
 export const onRequestGet: Route = async (context) => {
   const appUser = await requireSession(context)
   if (appUser instanceof Response) return appUser
-  const role = roleOf(appUser.role_key)
   const base = siteUrl(context.env, context.request)
 
   const id = loadId(context)
-  if (!isValidUuid(id)) return html(renderDetailPageHtml(role, base, null, { error: 'معرّف غير صالح.' }))
+  if (!isValidUuid(id)) return adminHtml(renderDetailPage(appUser, base, null, { error: 'معرّف غير صالح.' }))
 
   const service = serviceFrom(context)
-  if (!service) return html(renderDetailPageHtml(role, base, null, { error: 'النظام غير مهيأ.' }))
+  if (!service) return adminHtml(renderDetailPage(appUser, base, null, { error: 'النظام غير مهيأ.' }))
   const detail = await loadDeliveryDetail(service, id)
-  if (!detail) return html(renderDetailPageHtml(role, base, null, { error: 'التوصيل غير موجود.' }))
+  if (!detail) return adminHtml(renderDetailPage(appUser, base, null, { error: 'التوصيل غير موجود.' }))
 
-  return html(renderDetailPageHtml(role, base, detail))
+  const portfolioOptions =
+    detail.source_type === 'portfolio' ? await loadPortfolioCatalog(context) : undefined
+  return adminHtml(renderDetailPage(appUser, base, detail, { portfolio: portfolioOptions }))
 }
 
 export const onRequestPost: Route = async (context) => {
@@ -218,7 +58,6 @@ export const onRequestPost: Route = async (context) => {
   if (appUser instanceof Response) return appUser
   const forbidden = requireOwner(appUser)
   if (forbidden) return forbidden
-  const role = roleOf(appUser.role_key)
   const base = siteUrl(context.env, context.request)
 
   const id = loadId(context)
@@ -230,11 +69,23 @@ export const onRequestPost: Route = async (context) => {
   const form = await context.request.formData()
   const action = formString(form.get('action'))
   const detail = await loadDeliveryDetail(service, id)
-  if (!detail) return html(renderDetailPageHtml(role, base, null, { error: 'التوصيل غير موجود.' }))
+  if (!detail) return adminHtml(renderDetailPage(appUser, base, null, { error: 'التوصيل غير موجود.' }))
+
+  if (detail.archived_at && action !== 'unarchive_delivery') {
+    return adminHtml(
+      renderDetailPage(appUser, base, detail, {
+        error: 'التوصيل مؤرشف — أعد تفعيله أولاً لاستخدام الروابط أو الإجراءات.',
+      }),
+    )
+  }
 
   if (action === 'regenerate') {
     if (detail.status === 'expired') {
-      return html(renderDetailPageHtml(role, base, detail, { error: 'التوصيل منتهي — لا يمكن إنشاء رابط جديد له. أعد رفعه لتفعيله.' }))
+      return adminHtml(
+        renderDetailPage(appUser, base, detail, {
+          error: 'التوصيل منتهي — لا يمكن إنشاء رابط جديد له. أعد رفعه لتفعيله.',
+        }),
+      )
     }
     const token = generatePrivateToken()
     const hash = await hashPrivateToken(token)
@@ -243,10 +94,15 @@ export const onRequestPost: Route = async (context) => {
       .update({ private_token_hash: hash, token_created_at: new Date().toISOString(), token_expires_at: null })
       .eq('id', detail.id)
     if (error) {
-      return html(renderDetailPageHtml(role, base, detail, { error: 'تعذّر إنشاء رابط جديد.' }))
+      return adminHtml(renderDetailPage(appUser, base, detail, { error: 'تعذّر إنشاء رابط جديد.' }))
     }
     const updated = await loadDeliveryDetail(service, detail.id)
-    return html(renderDetailPageHtml(role, base, updated ?? detail, { freshToken: token }))
+    return adminHtml(
+      renderDetailPage(appUser, base, updated ?? detail, {
+        freshToken: token,
+        identifier: updated?.client_visible_id ?? detail.client_visible_id ?? undefined,
+      }),
+    )
   }
 
   if (action === 'revoke') {
@@ -255,11 +111,322 @@ export const onRequestPost: Route = async (context) => {
       .update({ token_expires_at: new Date().toISOString() })
       .eq('id', detail.id)
     if (error) {
-      return html(renderDetailPageHtml(role, base, detail, { error: 'تعذّر إلغاء الرابط.' }))
+      return adminHtml(renderDetailPage(appUser, base, detail, { error: 'تعذّر إلغاء الرابط.' }))
     }
     const updated = await loadDeliveryDetail(service, detail.id)
-    return html(renderDetailPageHtml(role, base, updated ?? detail, { notice: 'تم إلغاء الرابط الحالي.' }))
+    return adminHtml(renderDetailPage(appUser, base, updated ?? detail, { notice: 'تم إلغاء الرابط الحالي.' }))
   }
 
-  return html(renderDetailPageHtml(role, base, detail, { error: 'إجراء غير معروف.' }))
+  if (action === 'release') {
+    // Phase 4J: the videos stay locked until the owner explicitly releases
+    // them AFTER the client confirms. Releasing only moves the status; it does
+    // NOT touch the download window (the 3-day countdown still starts on the
+    // client's FIRST download inside gateDownload). Phase 4L: VIEW_ONLY
+    // deliveries never release an original. Phase 4M: releasing unlocks every
+    // active video item in the delivery together.
+    if (detail.delivery_mode !== 'VIEW_AND_DOWNLOAD') {
+      return adminHtml(
+        renderDetailPage(appUser, base, detail, {
+          error: 'هذا التوصيل بوضع «عرض فقط» — لا يتوفر تحميل للأصل.',
+        }),
+      )
+    }
+    if (detail.status !== 'confirmed') {
+      return adminHtml(
+        renderDetailPage(appUser, base, detail, {
+          error: 'لا يمكن إطلاق التحميل إلا بعد تأكيد العميل للفيديوهات.',
+        }),
+      )
+    }
+    const { error } = await service
+      .from('deliveries')
+      .update({ status: 'download_available' })
+      .eq('id', detail.id)
+    if (error) {
+      return adminHtml(renderDetailPage(appUser, base, detail, { error: 'تعذّر إطلاق التحميل.' }))
+    }
+    const releasedAt = new Date().toISOString()
+    const updatedActive = await service
+      .from('delivery_videos')
+      .update({ download_released_at: releasedAt })
+      .eq('delivery_id', detail.id)
+      .eq('is_active', true)
+      .select('id')
+    const activeItems = (await loadDeliveryDetail(service, detail.id))?.delivery_videos ?? []
+    const releasedAtMs = new Date(releasedAt).getTime()
+    const releasedCount = new Set(
+      activeItems.filter(
+        (video) => video.is_active && new Date(video.download_released_at ?? 0).getTime() === releasedAtMs,
+      ).map((video) => video.item_pos),
+    ).size
+    if (updatedActive.error) {
+      return adminHtml(renderDetailPage(appUser, base, detail, { error: 'تعذّر إطلاق التحميل.' }))
+    }
+    await recordActivity(service, detail.id, 'delivery_released', { items: releasedCount })
+    const updated = await loadDeliveryDetail(service, detail.id)
+    return adminHtml(
+      renderDetailPage(appUser, base, updated ?? detail, {
+        notice: 'تم إطلاق التحميل — أصبح الرابط متاحاً للعميل لكل الفيديوهات. يبدأ العد التنازلي (3 أيام) عند أول تحميل.',
+      }),
+    )
+  }
+
+  if (action === 'set_mode') {
+    const mode = formString(form.get('delivery_mode'))
+    const next: 'VIEW_ONLY' | 'VIEW_AND_DOWNLOAD' = mode === 'VIEW_ONLY' ? 'VIEW_ONLY' : 'VIEW_AND_DOWNLOAD'
+    if (detail.downloaded_at) {
+      return adminHtml(
+        renderDetailPage(appUser, base, detail, {
+          error: 'لا يمكن تغيير وضع التوصيل بعد بدء التحميل.',
+        }),
+      )
+    }
+    const { error } = await service
+      .from('deliveries')
+      .update({ delivery_mode: next })
+      .eq('id', detail.id)
+    if (error) {
+      return adminHtml(renderDetailPage(appUser, base, detail, { error: 'تعذّر حفظ الوضع.' }))
+    }
+    await recordActivity(service, detail.id, 'delivery_mode_changed', {
+      from: detail.delivery_mode,
+      to: next,
+    })
+    const updated = await loadDeliveryDetail(service, detail.id)
+    return adminHtml(
+      renderDetailPage(appUser, base, updated ?? detail, {
+        notice: next === 'VIEW_ONLY' ? 'تم الحفظ — التوصيل الآن «عرض فقط» ومنع التحميل.' : 'تم الحفظ — التوصيل الآن «عرض وتحميل».',
+      }),
+    )
+  }
+
+  if (action === 'archive_version' || action === 'delete_version') {
+    const versionId = formString(form.get('version_id'))
+    const target = (detail.delivery_videos ?? []).find((video) => video.id === versionId)
+    if (!target) {
+      return adminHtml(renderDetailPage(appUser, base, detail, { error: 'النسخة غير موجودة.' }))
+    }
+    if (target.is_active) {
+      return adminHtml(
+        renderDetailPage(appUser, base, detail, {
+          error: 'لا يمكن أرشفة أو حذف النسخة النشطة — ارفع نسخة جديدة أولاً لإنهاء هذه النسخة.',
+        }),
+      )
+    }
+    if (action === 'archive_version') {
+      const { error } = await service
+        .from('delivery_videos')
+        .update({ archived_at: new Date().toISOString() })
+        .eq('id', versionId)
+        .is('archived_at', null)
+      if (error) return adminHtml(renderDetailPage(appUser, base, detail, { error: 'تعذّر أرشفة النسخة.' }))
+      await recordActivity(service, detail.id, 'version_archived', { version: target.version })
+    } else {
+      // Delete another release's file permanently (not the active version).
+      if (target.r2_original_key && !target.original_deleted_at) {
+        if (!context.env.BUCKET) {
+          return adminHtml(
+            renderDetailPage(appUser, base, detail, { error: 'مخزن R2 غير مهيأ — لا يمكن حذف الملف.' }),
+          )
+        }
+        try {
+          await context.env.BUCKET.delete(target.r2_original_key)
+        } catch {
+          return adminHtml(renderDetailPage(appUser, base, detail, { error: 'تعذّر حذف الملف من المخزن.' }))
+        }
+        await service
+          .from('delivery_videos')
+          .update({ original_deleted_at: new Date().toISOString(), archived_at: new Date().toISOString() })
+          .eq('id', versionId)
+          .is('original_deleted_at', null)
+      } else {
+        // Nothing to delete (already gone or portfolio) — just archive the row.
+        await service
+          .from('delivery_videos')
+          .update({ archived_at: new Date().toISOString() })
+          .eq('id', versionId)
+          .is('archived_at', null)
+      }
+      await recordActivity(service, detail.id, 'version_deleted', { version: target.version })
+    }
+    const updated = await loadDeliveryDetail(service, detail.id)
+    return adminHtml(
+      renderDetailPage(appUser, base, updated ?? detail, {
+        notice: action === 'archive_version' ? 'تمت أرشفة النسخة.' : 'تم حذف الملف الأصلي للنسخة وأرشفتها.',
+      }),
+    )
+  }
+
+  if (action === 'archive_delivery') {
+    const { error } = await service
+      .from('deliveries')
+      .update({ archived_at: new Date().toISOString() })
+      .eq('id', detail.id)
+      .is('archived_at', null)
+    if (error) return adminHtml(renderDetailPage(appUser, base, detail, { error: 'تعذّر أرشفة التوصيل.' }))
+    await recordActivity(service, detail.id, 'delivery_archived')
+    const updated = await loadDeliveryDetail(service, detail.id)
+    return adminHtml(
+      renderDetailPage(appUser, base, updated ?? detail, { notice: 'تمت أرشفة التوصيل — أُخفِي من القوائم الرئيسية.' }),
+    )
+  }
+
+  if (action === 'unarchive_delivery') {
+    const { error } = await service
+      .from('deliveries')
+      .update({ archived_at: null })
+      .eq('id', detail.id)
+      .not('archived_at', 'is', null)
+    if (error) return adminHtml(renderDetailPage(appUser, base, detail, { error: 'تعذّر إلغاء الأرشفة.' }))
+    await recordActivity(service, detail.id, 'delivery_unarchived')
+    const updated = await loadDeliveryDetail(service, detail.id)
+    return adminHtml(
+      renderDetailPage(appUser, base, updated ?? detail, { notice: 'أُعيد التوصيل إلى القوائم الرئيسية.' }),
+    )
+  }
+
+  if (action === 'set_client') {
+    // Phase 4L — attach client name/WhatsApp to a delivery after the link was
+    // created without a client form (portfolio immediate links). Creates or
+    // reuses a client row; never creates fake data.
+    const name = formString(form.get('name'))
+    const whatsapp = formString(form.get('whatsapp'))
+    const clientResult = await resolveClient(service, appUser.id, null, name, whatsapp)
+    if (!clientResult.ok) {
+      return adminHtml(renderDetailPage(appUser, base, detail, { error: clientResult.error }))
+    }
+    const { error } = await service
+      .from('deliveries')
+      .update({ client_id: clientResult.client.id })
+      .eq('id', detail.id)
+    if (error) {
+      return adminHtml(renderDetailPage(appUser, base, detail, { error: 'تعذّر حفظ بيانات العميل.' }))
+    }
+    const updated = await loadDeliveryDetail(service, detail.id)
+    return adminHtml(
+      renderDetailPage(appUser, base, updated ?? detail, {
+        notice: 'تم حفظ بيانات العميل وربطها بالتوصيل.',
+      }),
+    )
+  }
+
+  if (action === 'add_video') {
+    // Phase 4M — grow a delivery with another portfolio video. The new item is
+    // added (item_pos = max+1, version 1) and the delivery lifecycle resets to
+    // pending so the client confirms again with the full set.
+    if (detail.status === 'downloaded' || detail.status === 'expired') {
+      return adminHtml(
+        renderDetailPage(appUser, base, detail, {
+          error: 'لا يمكن إضافة فيديو بعد بدء التحميل أو انتهاء التوصيل.',
+        }),
+      )
+    }
+    const portfolioUrl = formString(form.get('portfolio_url'))
+    if (!portfolioUrl) {
+      return adminHtml(renderDetailPage(appUser, base, detail, { error: 'اختر فيديو من المعرض العام.' }))
+    }
+    const catalog = await loadPortfolioCatalog(context)
+    if (!catalog.some((option) => option.url === portfolioUrl)) {
+      return adminHtml(
+        renderDetailPage(appUser, base, detail, {
+          error: 'الفيديو المحدد غير موجود في المعرض العام.',
+        }),
+      )
+    }
+    const activeUrls = new Set(
+      (detail.delivery_videos ?? [])
+        .filter((video) => video.is_active && video.source_type === 'portfolio' && video.portfolio_url)
+        .map((video) => video.portfolio_url),
+    )
+    if (activeUrls.has(portfolioUrl)) {
+      return adminHtml(
+        renderDetailPage(appUser, base, detail, {
+          error: 'هذا الفيديو مضاف بالفعل إلى التوصيل.',
+        }),
+      )
+    }
+    const positions = (detail.delivery_videos ?? []).map((video) => video.item_pos)
+    const nextItem = positions.length > 0 ? Math.max(...positions) + 1 : 1
+    const { error: insertError } = await service.from('delivery_videos').insert({
+      delivery_id: detail.id,
+      item_pos: nextItem,
+      version: 1,
+      source_type: 'portfolio',
+      portfolio_url: portfolioUrl,
+      created_by: appUser.id,
+    })
+    if (insertError) {
+      return adminHtml(renderDetailPage(appUser, base, detail, { error: 'تعذّر إضافة الفيديو.' }))
+    }
+    // Reset the delivery lifecycle so the client re-confirms the full set.
+    await service
+      .from('deliveries')
+      .update({
+        status: 'pending',
+        confirmed_at: null,
+        downloaded_at: null,
+        download_expires_at: null,
+        expired_at: null,
+      })
+      .eq('id', detail.id)
+    await service
+      .from('delivery_videos')
+      .update({ confirmed_at: null, download_released_at: null })
+      .eq('delivery_id', detail.id)
+      .eq('is_active', true)
+    await recordActivity(service, detail.id, 'reuploaded', { item: nextItem, version: 1 })
+    const updated = await loadDeliveryDetail(service, detail.id)
+    return adminHtml(
+      renderDetailPage(appUser, base, updated ?? detail, {
+        notice: 'تمت إضافة الفيديو إلى التوصيل وترقيم الموقع حديثاً. أُعيدت الحالة إلى «بانتظار التأكيد» ليعاود العميل التأكيد على كل الفيديوهات.',
+      }),
+    )
+  }
+
+  if (action === 'delete_video') {
+    // Phase 4M — remove one video item entirely: the active R2 original (if any)
+    // is deleted from the private bucket, and every row of that item is
+    // archived so the item disappears from the delivery.
+    const rawItem = Number(form.get('item_pos'))
+    if (!Number.isInteger(rawItem) || rawItem < 1) {
+      return adminHtml(renderDetailPage(appUser, base, detail, { error: 'عنصر الفيديو غير صالح.' }))
+    }
+    const itemRows = (detail.delivery_videos ?? []).filter((video) => video.item_pos === rawItem)
+    if (itemRows.length === 0) {
+      return adminHtml(renderDetailPage(appUser, base, detail, { error: 'الفيديو غير موجود.' }))
+    }
+    const activeRow = itemRows.find((video) => video.is_active)
+    if (activeRow?.r2_original_key && !activeRow.original_deleted_at) {
+      if (!context.env.BUCKET) {
+        return adminHtml(renderDetailPage(appUser, base, detail, { error: 'مخزن R2 غير مهيأ — لا يمكن حذف الملف.' }))
+      }
+      try {
+        await context.env.BUCKET.delete(activeRow.r2_original_key)
+      } catch {
+        return adminHtml(renderDetailPage(appUser, base, detail, { error: 'تعذّر حذف الملف من المخزن.' }))
+      }
+      await service
+        .from('delivery_videos')
+        .update({ original_deleted_at: new Date().toISOString() })
+        .eq('id', activeRow.id)
+        .is('original_deleted_at', null)
+    }
+    const { error: archiveError } = await service
+      .from('delivery_videos')
+      .update({ is_active: false, archived_at: new Date().toISOString() })
+      .eq('delivery_id', detail.id)
+      .eq('item_pos', rawItem)
+    if (archiveError) {
+      return adminHtml(renderDetailPage(appUser, base, detail, { error: 'تعذّر حذف الفيديو.' }))
+    }
+    await recordActivity(service, detail.id, 'version_deleted', { item: rawItem })
+    const updated = await loadDeliveryDetail(service, detail.id)
+    return adminHtml(
+      renderDetailPage(appUser, base, updated ?? detail, {
+        notice: 'تم حذف الفيديو من التوصيل (وحذف ملفه الأصلي إن وجد) وأرشفة نسخه.',
+      }),
+    )
+  }
+
+  return adminHtml(renderDetailPage(appUser, base, detail, { error: 'إجراء غير معروف.' }))
 }

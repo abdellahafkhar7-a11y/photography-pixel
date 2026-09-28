@@ -4,11 +4,11 @@ import type { RoleKey } from './types'
 import { ACTIVITY_LABEL } from '../deliveries/_helpers'
 
 //============================================================================
-// Phase 4B — Dashboard Home data loader.
+// Phase 4B (+6O) — Dashboard Home data loader.
 // Read-only aggregation over the existing Phase 2 Client Delivery schema
-// (clients / deliveries / delivery_activity) plus app_users. Uses the
-// canonical service client + row types from functions/_lib (the same ones
-// the Client Delivery module uses). No new tables, models, or abstractions.
+// (clients / deliveries / delivery_activity) plus app_users, and (since 4O)
+// the projects table for the projects + today's-shoots stats.
+// Uses the canonical service client + row types from functions/_lib.
 //============================================================================
 
 export type DeliveryStatusCounts = Record<DeliveryStatus, number>
@@ -28,10 +28,20 @@ export type DashboardClient = {
   createdAt: string
 }
 
+export type DashboardShoot = {
+  id: string
+  name: string
+  projectCode: string
+  clientName: string | null
+  shootTime: string | null
+}
+
 export type DashboardData = {
   clientsCount: number
   deliveriesCount: number
   teamCount: number | null
+  projectsCount: number
+  todayShoots: DashboardShoot[]
   statusCounts: DeliveryStatusCounts
   recentActivity: DashboardActivity[]
   recentClients: DashboardClient[]
@@ -63,6 +73,16 @@ type ClientRow = {
   created_at: string
 }
 
+type ProjectShootRow = {
+  id: string
+  name: string
+  project_code: string
+  shoot_date: string | null
+  shoot_time: string | null
+  status: string
+  clients: { name: string } | null
+}
+
 function emptyStatusCounts(): DeliveryStatusCounts {
   return {
     pending: 0,
@@ -79,6 +99,8 @@ export function emptyDashboardData(): DashboardData {
     clientsCount: 0,
     deliveriesCount: 0,
     teamCount: null,
+    projectsCount: 0,
+    todayShoots: [],
     statusCounts: emptyStatusCounts(),
     recentActivity: [],
     recentClients: [],
@@ -109,6 +131,15 @@ export async function loadDashboardData(service: Db, role: RoleKey): Promise<Das
     .limit(RECENT_CLIENTS_LIMIT)
     .returns<ClientRow[]>()
 
+  const projectsQuery = service
+    .from('projects')
+    .select('*', { count: 'exact', head: true })
+
+  const projectsListQuery = service
+    .from('projects')
+    .select('id, name, project_code, shoot_date, shoot_time, status, clients ( name )')
+    .returns<ProjectShootRow[]>()
+
   // Team size is owner-only data and is only queried for owners.
   const teamCountPromise: PromiseLike<{ count: number | null }> =
     role === 'owner'
@@ -118,13 +149,16 @@ export async function loadDashboardData(service: Db, role: RoleKey): Promise<Das
           .then((res) => ({ count: res.count }))
       : Promise.resolve({ count: null })
 
-  const [statusRes, clientsRes, activityRes, recentClientsRes, teamRes] = await Promise.all([
-    statusQuery,
-    clientsCountQuery,
-    activityQuery,
-    recentClientsQuery,
-    teamCountPromise,
-  ])
+  const [statusRes, clientsRes, activityRes, recentClientsRes, projectsRes, projectsListRes, teamRes] =
+    await Promise.all([
+      statusQuery,
+      clientsCountQuery,
+      activityQuery,
+      recentClientsQuery,
+      projectsQuery,
+      projectsListQuery,
+      teamCountPromise,
+    ])
 
   const statusCounts = emptyStatusCounts()
   let deliveriesCount = 0
@@ -148,12 +182,34 @@ export async function loadDashboardData(service: Db, role: RoleKey): Promise<Das
     createdAt: row.created_at,
   }))
 
+  const today = todayCasablanca()
+  const todayShoots: DashboardShoot[] = (projectsListRes.data ?? [])
+    .filter((row) => row.shoot_date === today && row.status !== 'archived')
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      projectCode: row.project_code,
+      clientName: row.clients?.name ?? null,
+      shootTime: row.shoot_time,
+    }))
+
   return {
     clientsCount: clientsRes.count ?? 0,
     deliveriesCount,
     teamCount: role === 'owner' ? (teamRes.count ?? 0) : null,
+    projectsCount: projectsRes.count ?? 0,
+    todayShoots,
     statusCounts,
     recentActivity,
     recentClients,
   }
+}
+
+function todayCasablanca(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Casablanca',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
 }

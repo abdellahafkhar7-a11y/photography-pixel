@@ -108,13 +108,37 @@ const BRAND_STYLES = `
 
   .actionbar{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:1rem}
 
+  /* Real logo mark (img) inside both the admin topbar and the client hero */
+  .brandmark{display:inline-flex;align-items:center;justify-content:center;flex:none;border-radius:var(--radius-md);overflow:hidden}
+  .brandmark img{display:block;width:100%;height:100%;object-fit:contain}
+  .topbar .brand .brandmark{width:32px;height:32px;background:var(--bg-tertiary)}
+
   /* Client page */
   .hero{position:relative;overflow:hidden;border-radius:var(--radius-2xl);background:var(--gradient);color:#fff;padding:2.2rem 1.8rem;box-shadow:var(--shadow-lg)}
   .hero .logo{display:inline-flex;align-items:center;gap:.7rem;font-weight:800;font-size:1.35rem;letter-spacing:.01em}
+  .hero .logo .brandmark{width:44px;height:44px;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.18)}
   .hero .sub{margin-top:.5rem;color:rgba(255,255,255,.85);font-size:.95rem}
   .client-body{margin-top:1.25rem}
   .video-frame{background:#14121a;border-radius:var(--radius-xl);overflow:hidden;box-shadow:var(--shadow-md);position:relative}
-  .video-frame video,.video-frame img{display:block;width:100%;aspect-ratio:16/9;object-fit:contain;background:#0d0c12}
+  .video-frame video,.video-frame iframe,.video-frame img{display:block;width:100%;aspect-ratio:16/9;object-fit:contain;background:#0d0c12;border:none}
+  .video-frame.vertical{background:#0d0c12;width:min(100%,calc(74vh*0.5625));margin-left:auto;margin-right:auto}
+  /* 9:16 vertical player: the frame itself is capped to a 74vh-derived width
+     (desktop never grows an oversized column; the dark frame hugs the video),
+     aspect-ratio locks the box to 9:16 and object-fit:contain preserves the
+     source's own aspect (no stretch/crop/letterbox). On phones the width caps
+     at the card so the video fills the vertical player naturally. */
+  .video-frame.vertical video,.video-frame.vertical iframe{display:block;width:100%;aspect-ratio:9/16;max-height:74vh;object-fit:contain;object-position:center;background:#0d0c12}
+  /* Client preview watermark — the same diagonal repeating "Photography Pixel"
+     pattern overlay used on the public Photography Pixel portfolio video cards
+     (styles.css .pp-pattern-watermark / script.js). SVG tile encoded 1:1 with
+     the site's watermark (white bold text, -25deg, ~0.12 opacity). */
+  .video-frame .pp-pattern-watermark{position:absolute;top:-30%;left:-30%;width:160%;height:160%;z-index:2;pointer-events:none;background-repeat:repeat;background-position:0 0;opacity:.12;transform:rotate(-25deg);transform-origin:center;background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22280%22%20height%3D%2280%22%3E%3Ctext%20x%3D%2210%22%20y%3D%2228%22%20fill%3D%22white%22%20font-family%3D%22Arial%2CHelvetica%2Csans-serif%22%20font-size%3D%2218%22%20font-weight%3D%22bold%22%3EPhotography%20Pixel%3C%2Ftext%3E%3Ctext%20x%3D%22150%22%20y%3D%2268%22%20fill%3D%22white%22%20font-family%3D%22Arial%2CHelvetica%2Csans-serif%22%20font-size%3D%2218%22%20font-weight%3D%22bold%22%3EPhotography%20Pixel%3C%2Ftext%3E%3C%2Fsvg%3E")}
+  /* Fullscreen + PiP controls removed from the client video player (native
+     controls keep play/pause/seek/volume). playsinline prevents iOS
+     auto-fullscreen; the JS guard force-exits if the video becomes the
+     fullscreen element regardless of the control. */
+  .video-frame video::-webkit-media-controls-fullscreen-button{display:none!important}
+  .video-frame video::-webkit-media-controls-picture-in-picture-button{display:none!important}
   .confirm-note{margin-top:1rem;background:var(--accent-light);border:1px solid rgba(54,36,119,.14);border-radius:var(--radius-lg);padding:1rem 1.1rem;color:var(--text-secondary);font-size:.92rem}
   .confirm-note b{color:var(--accent)}
   .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.75rem;margin-top:1.1rem}
@@ -122,6 +146,19 @@ const BRAND_STYLES = `
   .stat-cell .label{font-size:.68rem}
   .stat-cell .value{font-weight:700;font-size:.98rem}
   .wa-row{display:flex;align-items:center;gap:.6rem;color:var(--success);font-weight:650}
+  .video-item + .video-item{margin-top:1.4rem}
+  .video-item-head{display:flex;align-items:center;gap:.5rem;font-weight:700;font-size:.9rem;color:var(--text-secondary);margin-bottom:.6rem}
+  .video-item-n{display:inline-flex;align-items:center;justify-content:center;min-width:1.6rem;height:1.6rem;border-radius:999px;background:var(--accent);color:#fff;font-size:.78rem;font-weight:750}
+  /* Phone-first client page: shorter paddings so the vertical video is the
+     main visual with minimal empty space and no extra scroll to reach it. */
+  @media (max-width:520px){
+    .page{padding:1.1rem .9rem 3rem}
+    .card{padding:1.15rem}
+    .hero{padding:1.4rem 1.15rem;border-radius:var(--radius-xl)}
+    .hero .logo{font-size:1.15rem}
+    .hero .logo .brandmark{width:38px;height:38px}
+    .client-body{margin-top:1rem}
+  }
 </style>
 `
 
@@ -139,7 +176,8 @@ export function escapeHtml(value: string): string {
 }
 
 export function brandLogo(size = 26): string {
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="#6C4DFF"/><circle cx="12" cy="12" r="3.6" fill="rgba(255,255,255,.92)"/><path d="M12 3v2.4M12 18.6V21M3 12h2.4M18.6 12H21M6.3 6.3l1.7 1.7M16 16l1.7 1.7M17.7 6.3L16 8M8 16l-1.7 1.7" stroke="rgba(255,255,255,.85)" stroke-width="1.3" stroke-linecap="round"/></svg>`
+  const s = String(size)
+  return `<span class="brandmark"><img src="/assets/images/logo-3d.webp" alt="شعار Photography Pixel" width="${s}" height="${s}" loading="lazy" decoding="async"></span>`
 }
 
 export const icons = {

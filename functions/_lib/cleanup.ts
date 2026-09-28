@@ -10,6 +10,7 @@ export type CleanupResult = {
 
 type VideoBundle = {
   id: string
+  item_pos: number
   version: number
   is_active: boolean | null
   source_type: string | null
@@ -40,7 +41,7 @@ export async function runCleanup(
   }
   const now = new Date().toISOString()
   const videoSelect =
-    'delivery_videos(id,version,is_active,source_type,r2_original_key,original_deleted_at)'
+    'delivery_videos(id,item_pos,version,is_active,source_type,r2_original_key,original_deleted_at)'
 
   // --- Pass 1: deliveries whose download window has ended -------------------
   const { data: due, error: dueError } = await service
@@ -62,11 +63,13 @@ export async function runCleanup(
       }
       if (!claimed) continue // already moved by a concurrent run/route
       result.claimed += 1
-      const video = activeR2Video(delivery.delivery_videos)
-      if (video?.r2_original_key && !video.original_deleted_at) {
-        const deleted = await deleteOriginal(service, env, delivery.id, video)
-        if (deleted.ok) result.originalsDeleted += 1
-        else result.errors.push(deleted.error)
+      const videos = activeR2Videos(delivery.delivery_videos)
+      for (const video of videos) {
+        if (video.r2_original_key && !video.original_deleted_at) {
+          const deleted = await deleteOriginal(service, env, delivery.id, video)
+          if (deleted.ok) result.originalsDeleted += 1
+          else result.errors.push(deleted.error)
+        }
       }
       await recordActivity(service, delivery.id, 'delivery_expired', { auto: true })
     }
@@ -82,11 +85,13 @@ export async function runCleanup(
     result.errors.push(`select stuck deliveries: ${stuckError.message}`)
   } else if (stuck) {
     for (const delivery of stuck) {
-      const video = activeR2Video(delivery.delivery_videos)
-      if (!video?.r2_original_key || video.original_deleted_at) continue
-      const deleted = await deleteOriginal(service, env, delivery.id, video)
-      if (deleted.ok) result.originalsDeleted += 1
-      else result.errors.push(deleted.error)
+      const videos = activeR2Videos(delivery.delivery_videos)
+      for (const video of videos) {
+        if (!video.r2_original_key || video.original_deleted_at) continue
+        const deleted = await deleteOriginal(service, env, delivery.id, video)
+        if (deleted.ok) result.originalsDeleted += 1
+        else result.errors.push(deleted.error)
+      }
     }
   }
 
@@ -94,9 +99,11 @@ export async function runCleanup(
   return result
 }
 
-function activeR2Video(videos: VideoBundle[] | null | undefined): VideoBundle | null | undefined {
-  if (!videos) return undefined
-  return videos.find(
+// Returns EVERY active private (r2) video item — one active version per item
+// position, so a multi-video delivery yields several bundles to clean up.
+function activeR2Videos(videos: VideoBundle[] | null | undefined): VideoBundle[] {
+  if (!videos) return []
+  return videos.filter(
     (video) => video.is_active === true && video.source_type === 'r2' && video.r2_original_key,
   )
 }
@@ -145,6 +152,7 @@ async function deleteOriginal(
   }
   await recordActivity(service, deliveryId, 'original_deleted', {
     videoId: video.id,
+    item: video.item_pos,
     version: video.version,
     objectKey: key,
   })

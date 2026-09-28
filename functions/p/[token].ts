@@ -1,7 +1,7 @@
 import type { PagesFunction } from '@cloudflare/workers-types'
 import { siteUrl, type DeliveryEnv } from '../_lib/env'
 import { createServiceClient } from '../_lib/supabase'
-import { isValidTokenFormat } from '../_lib/tokens'
+import { isValidTokenFormat, splitStableToken } from '../_lib/tokens'
 import {
   confirmDelivery,
   expireDeliveryIfDue,
@@ -19,7 +19,7 @@ type Route = PagesFunction<DeliveryEnv, 'token', Record<string, unknown>>
 export const onRequestGet: Route = async (context) => {
   const token = String((context.params as { token: string }).token)
   const invalid = renderInvalidOrExpiredLinkPage(context.env, context.request)
-  if (!isValidTokenFormat(token)) return invalid
+  if (!isValidTokenFormat(splitStableToken(token).secret)) return invalid
 
   const resolved = await resolvePrivateDelivery(context.env, token)
   if (resolved.kind !== 'ok') return invalid
@@ -56,7 +56,7 @@ export const onRequestGet: Route = async (context) => {
 export const onRequestPost: Route = async (context) => {
   const token = String((context.params as { token: string }).token)
   const invalid = renderInvalidOrExpiredLinkPage(context.env, context.request)
-  if (!isValidTokenFormat(token)) return invalid
+  if (!isValidTokenFormat(splitStableToken(token).secret)) return invalid
 
   const resolved = await resolvePrivateDelivery(context.env, token)
   if (resolved.kind !== 'ok') return invalid

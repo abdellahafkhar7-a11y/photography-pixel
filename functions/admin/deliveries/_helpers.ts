@@ -4,6 +4,7 @@ import { createServiceClient, type Db } from '../../_lib/supabase'
 import type {
   ClientsRow,
   DeliveryActivityType,
+  DeliveryMode,
   DeliverySourceType,
   DeliveryStatus,
   DeliveryVideosRow,
@@ -54,6 +55,15 @@ export function isValidUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
 }
 
+// Safe integer parse with fallback + upper clamp (plan limits are enforced by
+// the caller where meaningful).
+export function parseIntOr(value: string, fallback: number, max = Number.MAX_SAFE_INTEGER): number {
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isFinite(parsed)) return fallback
+  if (Number.isFinite(max) && parsed > max) return max
+  return Math.max(0, parsed)
+}
+
 //----------------------------------------------------------------------------
 // Payloads (typed explicitly because supabase-js cannot infer reverse
 // foreign-key embeddings for delivery_videos/delivery_activity).
@@ -62,25 +72,36 @@ export function isValidUuid(value: string): boolean {
 export type DeliveryListItem = {
   id: string
   source_type: DeliverySourceType
+  delivery_mode: DeliveryMode
   status: DeliveryStatus
   created_at: string
   token_created_at: string
   confirmed_at: string | null
+  released_at: string | null
   downloaded_at: string | null
   download_expires_at: string | null
-  clients: { name: string; whatsapp_number: string } | null
+  client_visible_id: string | null
+  archived_at: string | null
+  clients: { id: string; name: string; whatsapp_number: string } | null
   delivery_videos: {
     id: string
+    item_pos: number
     version: number
     is_active: boolean
     source_type: DeliverySourceType
     original_deleted_at: string | null
+    confirmed_at: string | null
+    download_released_at: string | null
+    downloaded_at: string | null
+    download_expires_at: string | null
+    expired_at: string | null
   }[]
 }
 
 export type DeliveryDetail = {
   id: string
   source_type: DeliverySourceType
+  delivery_mode: DeliveryMode
   status: DeliveryStatus
   token_created_at: string
   token_expires_at: string | null
@@ -88,8 +109,11 @@ export type DeliveryDetail = {
   downloaded_at: string | null
   download_expires_at: string | null
   expired_at: string | null
+  client_visible_id: string | null
+  archived_at: string | null
   created_at: string
   clients: ClientsRow | null
+  client_video_slots: { id: string; position: number; title: string; status: string } | null
   delivery_videos: DeliveryVideosRow[]
   delivery_activity: {
     id: string
@@ -103,15 +127,21 @@ export async function listDeliveries(service: Db): Promise<DeliveryListItem[]> {
   const { data } = await service
     .from('deliveries')
     .select(
-      `id, source_type, status, created_at, token_created_at, confirmed_at,
-       downloaded_at, download_expires_at,
-       clients ( name, whatsapp_number ),
-       delivery_videos ( id, version, is_active, source_type, original_deleted_at )`,
+      `id, source_type, delivery_mode, status, created_at, token_created_at, confirmed_at,
+       downloaded_at, download_expires_at, client_visible_id, archived_at,
+       clients ( id, name, whatsapp_number ),
+       delivery_videos ( id, item_pos, version, is_active, source_type, original_deleted_at, confirmed_at, download_released_at, downloaded_at, download_expires_at, expired_at )`,
     )
     .order('created_at', { ascending: false })
     .limit(200)
     .returns<DeliveryListItem[]>()
   return data ?? []
+}
+
+// "videoCount" counts distinct active items (one active version per item
+// position) — this is the number of videos the client actually sees/link.
+export function activeVideoCount(videos: DeliveryListItem['delivery_videos']): number {
+  return new Set((videos ?? []).filter((video) => video.is_active).map((video) => video.item_pos)).size
 }
 
 export async function loadDeliveryDetail(
@@ -121,9 +151,10 @@ export async function loadDeliveryDetail(
   const { data } = await service
     .from('deliveries')
     .select(
-      `id, source_type, status, token_created_at, token_expires_at, confirmed_at,
-       downloaded_at, download_expires_at, expired_at, created_at,
+      `id, source_type, delivery_mode, status, token_created_at, token_expires_at, confirmed_at,
+       downloaded_at, download_expires_at, expired_at, client_visible_id, archived_at, created_at,
        clients ( * ),
+       client_video_slots ( id, position, title, status ),
        delivery_videos ( * ),
        delivery_activity ( id, type, metadata, created_at )`,
     )
@@ -134,7 +165,7 @@ export async function loadDeliveryDetail(
     data.delivery_activity.sort((a, b) => b.created_at.localeCompare(a.created_at))
   }
   if (data.delivery_videos) {
-    data.delivery_videos.sort((a, b) => b.version - a.version)
+    data.delivery_videos.sort((a, b) => a.item_pos - b.item_pos || b.version - a.version)
   }
   return data
 }
@@ -150,6 +181,12 @@ export const ACTIVITY_LABEL: Record<DeliveryActivityType, string> = {
   original_deleted: 'حُذف الملف الأصلي من التخزين',
   reuploaded: 'تم رفع ملف جديد',
   version_created: 'نسخة جديدة',
+  delivery_archived: 'تمت أرشفة التوصيل',
+  delivery_unarchived: 'أُعيد تفعيل التوصيل',
+  version_archived: 'تمت أرشفة نسخة',
+  version_deleted: 'حُذف ملف نسخة',
+  delivery_mode_changed: 'تغيّر وضع التوصيل',
+  delivery_released: 'تم إطلاق التحميل',
 }
 
 //----------------------------------------------------------------------------
@@ -270,10 +307,25 @@ export async function loadPortfolioCatalog(
 }
 
 //----------------------------------------------------------------------------
-// Misc
+// Stable private links — /p/<identifier>-<secret>
 //----------------------------------------------------------------------------
 
-export function privateLinkFor(request: Request, env: DeliveryEnv, token: string): string {
+// The cosmetic identifier is derived once at creation time and never changes.
+// When a client is known the WhatsApp digits (international) become the
+// identifier; client-less portfolio links fall back to the delivery id digest.
+// The identifier is NOT a secret: the random token after the dash is.
+export function stableClientVisibleId(whatsapp: string, deliveryId: string): string {
+  const digits = whatsapp.replace(/\D/g, '')
+  if (digits) return digits
+  return deliveryId.replace(/-/g, '').slice(0, 8)
+}
+
+export function privateLinkFor(
+  request: Request,
+  env: DeliveryEnv,
+  token: string,
+  identifier: string | null = null,
+): string {
   const base = siteUrl(env, request)
-  return `${base}/p/${token}`
+  return identifier ? `${base}/p/${identifier}-${token}` : `${base}/p/${token}`
 }

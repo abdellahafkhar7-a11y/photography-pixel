@@ -1,4 +1,5 @@
 import type { AppUserRow } from './types'
+import { profileDisplayName, profileInitials } from './profile'
 
 //============================================================================
 // Photography Pixel · Admin Dashboard Shell (Phase 4A)
@@ -17,6 +18,7 @@ export type RouteKey =
   | 'equipment'
   | 'client-delivery'
   | 'clients'
+  | 'projects'
   | 'analytics'
   | 'team'
   | 'settings'
@@ -53,6 +55,23 @@ const ICONS: Record<string, string> = {
   eye: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12S6 4.8 12 4.8 21.5 12 21.5 12 18 19.2 12 19.2 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/></svg>`,
   calendar: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.4"/><path d="M8 3v4"/><path d="M16 3v4"/><path d="M3.5 10h17"/></svg>`,
   arrowLeft: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m11 6-6 6 6 6"/></svg>`,
+  upload: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M4 19h16"/></svg>`,
+  download: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 19h16"/></svg>`,
+  copy: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2.2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+  link: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1.2 1.2"/><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1.2-1.2"/></svg>`,
+  check: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg>`,
+  play: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4.5v15l13-7.5Z"/></svg>`,
+  refresh: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 6"/><path d="M20 4v7h-7"/></svg>`,
+  ban: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m5.5 5.5 13 13"/></svg>`,
+  trash: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V5a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 5v2"/><path d="M6 7l1 12a1.8 1.8 0 0 0 1.8 1.6h6.4A1.8 1.8 0 0 0 17 19l1-12"/></svg>`,
+  lock: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>`,
+  phone: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l1.5 4.5-2.2 1.6a13 13 0 0 0 5.6 5.6l1.6-2.2L20 15v4a1.8 1.8 0 0 1-2 1.8C10 20 4 14 3.2 6A1.8 1.8 0 0 1 5 4Z"/></svg>`,
+  search: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>`,
+  filter: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16"/><path d="M7 12h10"/><path d="M10 19h4"/></svg>`,
+  external: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v5a1.8 1.8 0 0 1-1.8 1.8H5.8A1.8 1.8 0 0 1 4 19V8.8A1.8 1.8 0 0 1 5.8 7H11"/></svg>`,
+  whatsapp: `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.2 14.1c-.2.6-1.2 1.2-1.7 1.2-.5.1-1.1.1-1.7-.1-.5-.1-1-.3-1.5-.6a9.6 9.6 0 0 1-4.2-4.2c-.3-.5-.5-1-.6-1.5-.2-.6-.2-1.2-.1-1.7.1-.5.6-1.5 1.2-1.7.2 0 .4 0 .5.1.1.1.1.2.3.6.1.2.2.3.1.5-.1.2-.3.5-.4.7-.1.2-.3.3-.1.6.1.3.6 1 1.3 1.7s1.4 1.2 1.7 1.3c.3.2.4.1.6-.1l.7-.8c.2-.2.3-.2.6-.1l1 1.2c.1.2.3.4.3.5-.1.2-.1.3-.1.5Z"/></svg>`,
+  archive: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="4.5" rx="1.6"/><path d="M5 8.5V20h14V8.5"/><path d="M10 12h4"/></svg>`,
+  kanban: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3.5" width="5.2" height="17" rx="1.6"/><rect x="9.4" y="3.5" width="5.2" height="11" rx="1.6"/><rect x="15.8" y="3.5" width="5.2" height="14" rx="1.6"/></svg>`,
 }
 
 export function shellIcon(name: string, size = 20): string {
@@ -77,15 +96,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { key: 'dashboard', label: 'لوحة التحكم', href: '/admin', icon: 'grid', ownerOnly: false },
   { key: 'portfolio', label: 'الأعمال', href: '/admin/portfolio', icon: 'briefcase', ownerOnly: false },
   { key: 'models', label: 'الموديلات', href: '/admin/models', icon: 'users', ownerOnly: false },
-  { key: 'ugc', label: 'UGC', href: '/admin/ugc', icon: 'video', ownerOnly: false },
-  { key: 'media-buyer', label: 'Media Buyer', href: '/admin/media-buyer', icon: 'megaphone', ownerOnly: false },
-  { key: 'voice-over', label: 'التعليق الصوتي', href: '/admin/voice-over', icon: 'mic', ownerOnly: false },
-  { key: 'equipment', label: 'المعدات', href: '/admin/equipment', icon: 'camera', ownerOnly: false },
-  { key: 'client-delivery', label: 'تسليم العملاء', href: '/admin/client-delivery', icon: 'package', ownerOnly: false },
+  { key: 'client-delivery', label: 'تسليم العملاء', href: '/admin/deliveries', icon: 'package', ownerOnly: false },
   { key: 'clients', label: 'العملاء', href: '/admin/clients', icon: 'user', ownerOnly: true },
+  { key: 'projects', label: 'المشاريع', href: '/admin/projects', icon: 'kanban', ownerOnly: true },
   { key: 'analytics', label: 'التحليلات', href: '/admin/analytics', icon: 'chart', ownerOnly: true },
   { key: 'team', label: 'الفريق', href: '/admin/team', icon: 'team', ownerOnly: true },
-  { key: 'settings', label: 'الإعدادات', href: '/admin/settings', icon: 'settings', ownerOnly: true },
+  { key: 'settings', label: 'الإعدادات', href: '/admin/settings', icon: 'settings', ownerOnly: false },
 ]
 
 const ROLE_LABEL: Record<string, string> = { owner: 'صاحب الموقع', coordinator: 'منسق' }
@@ -109,6 +125,7 @@ export function moduleCopy(key: Exclude<RouteKey, 'dashboard' | 'team'>): { titl
     equipment: { title: 'المعدات', subtitle: 'جرد معدات التصوير وحالتها.' },
     'client-delivery': { title: 'تسليم العملاء', subtitle: 'متابعة توصيلات العملاء وروابط التحميل.' },
     clients: { title: 'العملاء', subtitle: 'بيانات العملاء وقنوات التواصل.' },
+    projects: { title: 'المشاريع', subtitle: 'جلسات التصوير: الجداول، المهام، الفيديوهات، والتسليم.' },
     analytics: { title: 'التحليلات', subtitle: 'إحصائيات وصول الزوار وأداء المعرض.' },
     settings: { title: 'الإعدادات', subtitle: 'إعدادات الموقع والمتغيرات العامة.' },
   }
@@ -180,6 +197,7 @@ const STYLES = `
   .side-user .n{font-size:.84rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .side-user .r{font-size:.72rem;color:var(--text-muted)}
   .avatar{width:35px;height:35px;border-radius:var(--radius-full);background:var(--gradient);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:.92rem;flex:none}
+  .avatar-img{background:var(--surface-elevated);object-fit:cover;border:1px solid var(--line-default)}
   .nav-overlay{position:fixed;inset:0;background:rgba(32,31,28,.38);z-index:400;opacity:0;pointer-events:none;transition:opacity var(--transition-fast)}
 
   /* Top bar */
@@ -192,12 +210,12 @@ const STYLES = `
   .user-area{margin-inline-start:auto;display:flex;align-items:center;gap:.7rem;min-width:0}
   .user-meta{line-height:1.3;text-align:start;min-width:0}
   .user-meta .u-n{font-size:.86rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:16ch}
-  .user-meta .u-mail{direction:ltr;text-align:left;font-size:.74rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:20ch}
+  .user-meta .u-s{font-size:.74rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:20ch}
   .logout-btn{display:inline-flex;align-items:center;gap:.45rem;padding:.5rem .85rem;border-radius:var(--radius-md);border:1px solid var(--line-default);background:var(--surface-elevated);color:var(--text-secondary);font-size:.84rem;font-weight:650;cursor:pointer;text-decoration:none!important}
   .logout-btn:hover{background:var(--bg-tertiary);color:var(--error);border-color:rgba(179,71,63,.35)}
 
   /* Content */
-  .content{width:100%;max-width:1180px;margin:0 auto;padding:1.5rem 1.5rem 3rem;flex:1}
+  .content{width:100%;max-width:1440px;margin:0 auto;padding:1.5rem 1.5rem 3rem;flex:1}
   .dash-foot{padding:1.1rem 1.5rem;text-align:center;color:var(--text-subtle);font-size:.78rem;border-top:1px solid var(--line-subtle)}
 
   /* Cards & grids */
@@ -207,7 +225,8 @@ const STYLES = `
   .stat .k{display:flex;align-items:center;gap:.45rem;font-size:.74rem;font-weight:700;color:var(--text-muted)}
   .stat .v{font-size:1.65rem;font-weight:800;line-height:1.2;margin-top:.35rem}
   .stat .h{font-size:.74rem;color:var(--text-subtle);margin-top:.15rem}
-  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1rem;min-width:0}
+  .grid-2>*{min-width:0}
   .grid-stats.three{grid-template-columns:repeat(3,1fr)}
   .panel{background:var(--surface-elevated);border:1px solid var(--line-default);border-radius:var(--radius-xl);padding:1.3rem 1.4rem;box-shadow:var(--shadow-sm)}
   .panel-head{display:flex;align-items:center;gap:.6rem;margin-bottom:.85rem}
@@ -291,24 +310,206 @@ const STYLES = `
     .tbl{min-width:24rem}
   }
 
+  /* Forms, alerts, badges, layout utilities */
+  .muted{color:var(--text-muted);font-size:.9rem}
+  .hint{color:var(--text-subtle);font-size:.82rem}
+  .row{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
+  .between{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:1rem}
+  .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem}
+  .page-head h1{font-size:1.35rem;font-weight:800}
+  .page-head .sub{color:var(--text-muted);font-size:.88rem;margin-top:.2rem}
+  .form-card-title{font-size:1.02rem;font-weight:800;margin-bottom:1rem}
+  .field>span{display:block;font-weight:700;font-size:.88rem;margin-bottom:.4rem;color:var(--text-secondary)}
+  .field select,.field textarea,.field input[type=file],.field input[type=tel],.field input[type=email],.field input[type=url],.field input[type=text]{width:100%;padding:.68rem .85rem;background:#fff;border:1px solid var(--line-strong);border-radius:var(--radius-md);color:var(--text-primary);font-size:.95rem;font-family:inherit}
+  .field select:focus,.field textarea:focus,.field input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+  .field .hint{display:block;margin-top:.35rem}
+  .btn-outline{background:transparent;color:var(--accent);border-color:var(--accent)}
+  .btn-outline:hover{background:var(--accent-light)}
+  .btn-danger{background:transparent;color:var(--error);border-color:rgba(179,71,63,.4)}
+  .btn-danger:hover{background:rgba(179,71,63,.06)}
+  .btn-success{background:var(--success);color:#fff}
+  .btn-success:hover{filter:brightness(1.08)}
+  .alert.success{background:rgba(47,125,90,.08);color:var(--success);border:1px solid rgba(47,125,90,.24)}
+  .alert.info{background:var(--accent-light);color:var(--accent);border:1px solid rgba(54,36,119,.18)}
+  .badge{display:inline-flex;align-items:center;gap:.35rem;padding:.22rem .7rem;border-radius:var(--radius-full);font-size:.76rem;font-weight:700;border:1px solid transparent;white-space:nowrap}
+  .badge.st-pending{background:#F7F1E3;color:#8a6a1f;border-color:#E9DDB8}
+  .badge.st-preview_viewed{background:var(--accent-light);color:var(--accent);border-color:rgba(54,36,119,.22)}
+  .badge.st-confirmed,.badge.st-download_available{background:rgba(54,36,119,.12);color:var(--accent);border-color:rgba(54,36,119,.28)}
+  .badge.st-downloaded{background:rgba(47,125,90,.1);color:var(--success);border-color:rgba(47,125,90,.28)}
+  .badge.st-expired{background:rgba(179,71,63,.08);color:var(--error);border-color:rgba(179,71,63,.24)}
+  .badge.src-portfolio{background:var(--accent-light);color:var(--accent);border-color:rgba(54,36,119,.2)}
+  .badge.src-r2{background:var(--bg-secondary);color:var(--text-secondary);border-color:var(--line-default)}
+  .badge.ok{background:rgba(47,125,90,.1);color:var(--success);border-color:rgba(47,125,90,.28)}
+  .badge.off{background:rgba(179,71,63,.08);color:var(--error);border-color:rgba(179,71,63,.24)}
+  .badge.md-download{background:rgba(47,125,90,.1);color:var(--success);border-color:rgba(47,125,90,.28)}
+  .badge.md-view{background:var(--accent-light);color:var(--accent);border-color:rgba(54,36,119,.22)}
+  .badge.st-download{background:rgba(47,125,90,.1);color:var(--success);border-color:rgba(47,125,90,.28)}
+  .tbl tr.row-muted td{opacity:.62}
+  .tbl tr.row.deleted td{opacity:.55}
+  .check-field{display:flex;align-items:center;gap:.45rem;font-size:.86rem;color:var(--text-secondary);cursor:pointer}
+  .check-field input{width:1rem;height:1rem;accent-color:var(--accent);cursor:pointer}
+  .card.danger-zone{border:1px solid rgba(179,71,63,.28);background:rgba(179,71,63,.04)}
+  .card.danger-zone .form-card-title{color:var(--error)}
+  .tbl select{padding:.4rem .55rem;border:1px solid var(--line-strong);border-radius:var(--radius-sm);background:#fff;color:var(--text-primary);font-size:.84rem;font-family:inherit}
+  .inline-actions{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
+  .linkbox{display:flex;align-items:center;gap:.6rem;background:var(--bg-secondary);border:1px solid var(--line-strong);border-radius:var(--radius-md);padding:.6rem .8rem;direction:ltr;text-align:left;font-size:.88rem;color:var(--text-primary);word-break:break-all}
+  .linkbox .copy{margin-inline-start:auto;flex:none}
+  .actionbar{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:1rem}
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.75rem;margin-top:1.1rem}
+  .stat-cell{background:var(--surface-elevated);border:1px solid var(--line-default);border-radius:var(--radius-lg);padding:.9rem 1rem;box-shadow:var(--shadow-sm)}
+  .stat-cell .label{font-size:.7rem;letter-spacing:.04em;color:var(--text-muted);font-weight:700;margin-bottom:.25rem}
+  .stat-cell .value{font-weight:700;font-size:.98rem;word-break:break-word}
+  .video-frame{background:#14121a;border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-md)}
+  .video-frame video{display:block;width:100%;aspect-ratio:16/9;object-fit:contain;background:#0d0c12}
+  .video-frame-lock{position:relative;display:flex;align-items:center;justify-content:center;background:#0d0c12}
+  .video-frame-lock .pp-pattern-watermark{position:absolute;inset:-30%;pointer-events:none;background-repeat:repeat;background-position:0 0;opacity:.1;transform:rotate(-25deg);background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22280%22%20height%3D%2280%22%3E%3Ctext%20x%3D%2210%22%20y%3D%2228%22%20fill%3D%22white%22%20font-family%3D%22Arial%2CHelvetica%2Csans-serif%22%20font-size%3D%2218%22%20font-weight%3D%22bold%22%3EPhotography%20Pixel%3C%2Ftext%3E%3Ctext%20x%3D%22150%22%20y%3D%2268%22%20fill%3D%22white%22%20font-family%3D%22Arial%2CHelvetica%2Csans-serif%22%20font-size%3D%2218%22%20font-weight%3D%22bold%22%3EPhotography%20Pixel%3C%2Ftext%3E%3C%2Fsvg%3E")}
+  .ok-glow{display:inline-flex;align-items:center;gap:.3rem;color:var(--success);font-weight:650;font-size:.85rem}
+  .video-item-head{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;font-weight:700;font-size:.9rem;color:var(--text-secondary);margin-bottom:.6rem}
+  .video-item-head .form-card-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .video-item-n{display:inline-flex;align-items:center;justify-content:center;min-width:1.6rem;height:1.6rem;border-radius:999px;background:var(--accent);color:#fff;font-size:.78rem;font-weight:750}
+  .video-item-head .st-confirmed{margin-inline-start:auto}
+  .video-add-card{margin-top:1rem;border-style:dashed}
+  .pf-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:.55rem;margin-top:.4rem}
+  .pf-group{display:contents}
+  .pf-cat{grid-column:1/-1;font-size:.72rem;font-weight:800;letter-spacing:.04em;color:var(--text-muted);margin-top:.25rem}
+  .pf-item{display:flex;align-items:center;gap:.55rem;padding:.52rem .7rem;border:1px solid var(--line-default);border-radius:var(--radius-md);background:var(--surface-elevated);cursor:pointer;transition:border-color var(--transition-fast),background var(--transition-fast)}
+  .pf-item:hover{border-color:var(--line-strong)}
+  .pf-item.checked{border-color:var(--accent);background:rgba(82,52,156,.08)}
+  .pf-item input{position:absolute;opacity:0;pointer-events:none}
+  .pf-check{display:inline-flex;align-items:center;justify-content:center;width:1.15rem;height:1.15rem;border-radius:4px;border:1.5px solid var(--line-strong);color:transparent;font-size:.65rem;font-weight:800;flex:none}
+  .pf-item.checked .pf-check{background:var(--accent);border-color:var(--accent);color:#fff}
+  .pf-num{display:inline-flex;align-items:center;justify-content:center;min-width:1.3rem;height:1.3rem;border-radius:999px;background:var(--bg-tertiary);color:var(--text-secondary);font-size:.7rem;font-weight:750;flex:none}
+  .pf-label{font-size:.85rem;font-weight:650;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .filter-bar{display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end}
+  .filter-bar .field{margin-bottom:0}
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:.2rem 1.1rem}
+  @media (max-width:640px){.form-grid{grid-template-columns:1fr}}
+
+  /* Portfolio grid (Phase 4I) */
+  .pcat-row{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1.1rem}
+  .pcat-pill{display:inline-flex;align-items:center;gap:.4rem;padding:.42rem .85rem;border-radius:var(--radius-full);border:1px solid var(--line-default);background:var(--surface-elevated);color:var(--text-secondary);font-size:.84rem;font-weight:700;text-decoration:none!important;transition:background var(--transition-fast),transform .06s ease}
+  .pcat-pill:hover{background:var(--bg-tertiary)}
+  .pcat-pill.current{background:var(--gradient);color:#fff;border-color:transparent}
+  .pcat-pill .n{opacity:.75;font-weight:600}
+  .vcard-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:1rem}
+  .vcard{background:var(--surface-elevated);border:1px solid var(--line-default);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-sm);display:flex;flex-direction:column;min-width:0}
+  .vthumb{position:relative;display:block;width:100%;aspect-ratio:16/9;border:0;padding:0;cursor:pointer;background:linear-gradient(135deg,#2678bb 0%,#362477 55%,#4a1170 100%);overflow:hidden}
+  .vthumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform var(--transition-smooth)}
+  .vthumb:hover img{transform:scale(1.04)}
+  .vthumb .vplay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff}
+  .vthumb .vplay .play-chip{width:52px;height:52px;border-radius:50%;background:rgba(32,31,28,.45);backdrop-filter:blur(2px);display:inline-flex;align-items:center;justify-content:center;transition:transform var(--transition-fast),background var(--transition-fast)}
+  .vthumb:hover .play-chip{background:var(--accent);transform:scale(1.08)}
+  .vbody{padding:.85rem .95rem .95rem;display:flex;flex-direction:column;gap:.55rem;min-width:0}
+  .vmeta{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+  .vmeta .vt{font-weight:750;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .vactions{display:flex;gap:.45rem;flex-wrap:wrap}
+  .vactions .btn{padding:.42rem .7rem;font-size:.8rem;flex:1}
+
+  /* Portfolio video player modal (Phase 4I) */
+  .vmodal{position:fixed;inset:0;z-index:900;display:none;align-items:center;justify-content:center;padding:1rem}
+  .vmodal.open{display:flex}
+  .vmodal-backdrop{position:absolute;inset:0;background:rgba(20,18,26,.78);backdrop-filter:blur(3px)}
+  .vmodal-box{position:relative;width:min(960px,100%);max-height:90vh;background:#0d0c12;border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-xl)}
+  .vmodal-head{display:flex;align-items:center;gap:.6rem;padding:.6rem .75rem;background:var(--surface-elevated)}
+  .vmodal-head .vm-title{font-size:.9rem;font-weight:750;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .vmodal-close{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:var(--radius-md);border:1px solid var(--line-default);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;flex:none}
+  .vmodal-close:hover{background:var(--bg-tertiary)}
+  .vmodal-frame{width:100%;aspect-ratio:16/9;border:0;display:block;background:#0d0c12}
+
+  /* Light modal (create delivery / link card, Phase 4J) */
+  .lm-modal{position:fixed;inset:0;z-index:950;display:none;align-items:center;justify-content:center;padding:1rem}
+  .lm-modal.open{display:flex}
+  .lm-modal-backdrop{position:absolute;inset:0;background:rgba(20,18,26,.78);backdrop-filter:blur(3px)}
+  .lm-box{position:relative;width:min(540px,100%);max-height:92vh;overflow:auto;background:var(--surface-elevated);border-radius:var(--radius-xl);box-shadow:var(--shadow-xl);padding:1.4rem 1.5rem 1.5rem}
+  .lm-head{display:flex;align-items:center;gap:.6rem;margin-bottom:1.1rem}
+  .lm-title{font-size:1.05rem;font-weight:800;flex:1;min-width:0}
+  .lm-close{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:var(--radius-md);border:1px solid var(--line-default);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;flex:none}
+  .lm-close:hover{background:var(--bg-tertiary)}
+  .lm-chip{display:flex;gap:.6rem;align-items:flex-start;background:var(--bg-primary);border:1px solid var(--line-default);border-radius:var(--radius-md);padding:.6rem .8rem;margin-bottom:1.1rem;min-width:0}
+  .lm-chip .lm-chip-ico{color:var(--accent);flex:none;margin-top:.1rem}
+  .lm-chip .lm-chip-name{font-weight:750;font-size:.9rem;word-break:break-all}
+  .lm-chip .lm-chip-cat{font-size:.78rem;color:var(--text-muted)}
+  .lm-linkbox{display:flex;align-items:center;gap:.6rem;background:var(--bg-secondary);border:1px solid var(--line-default);border-radius:var(--radius-md);padding:.6rem .8rem;direction:ltr;text-align:left;font-size:.84rem;color:var(--text-primary);word-break:break-all}
+  .lm-linkbox .copy{margin-inline-start:auto;flex:none}
+  .lm-error{color:var(--error);font-size:.88rem;margin-top:.6rem;min-height:1.2em}
+  .lm-done{margin-top:.9rem;padding:.8rem 1rem;border-radius:var(--radius-md);background:rgba(47,125,90,.08);color:var(--success);border:1px solid rgba(47,125,90,.24);font-size:.9rem}
+
+  /* Real upload UI (Phase 4I) */
+  .dropzone{border:1.5px dashed var(--line-strong);border-radius:var(--radius-lg);padding:2rem 1rem;text-align:center;cursor:pointer;background:var(--bg-primary);transition:background var(--transition-fast),border-color var(--transition-fast)}
+  .dropzone.drag{background:var(--accent-light);border-color:var(--accent)}
+  .dropzone .dz-ico{color:var(--accent)}
+  .dropzone p{color:var(--text-muted);font-size:.9rem;margin-top:.4rem}
+  .dropzone input[type=file]{display:none}
+  .up-meta{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin-top:1rem}
+  .up-file{flex:1;min-width:14rem;min-width:0}
+  .up-name{font-weight:750;font-size:.95rem;word-break:break-all}
+  .up-detail{font-size:.8rem;color:var(--text-muted)}
+  .up-size-big{color:var(--error);font-weight:700}
+  .up-bar{height:10px;border-radius:var(--radius-full);background:var(--bg-tertiary);overflow:hidden;margin-top:1rem}
+  .up-bar>span{display:block;height:100%;width:0;background:var(--gradient);border-radius:var(--radius-full);transition:width .15s ease}
+  .up-progress{display:flex;align-items:center;justify-content:space-between;gap:.7rem;margin-top:.55rem;font-size:.84rem;color:var(--text-muted);flex-wrap:wrap}
+  .up-actions{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:1.1rem}
+
+  @media (max-width:767px){
+    .vcard-grid{grid-template-columns:repeat(auto-fill,minmax(13rem,1fr));gap:.85rem}
+  }
+  @media (max-width:479px){
+    .vcard-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem}
+    .vbody{padding:.7rem .7rem .8rem}
+    .dropzone{padding:1.4rem .8rem}
+  }
+
   /* Login */
-  .auth-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:
-    radial-gradient(ellipse 640px 460px at 18% 8%,rgba(38,120,187,.09),transparent 60%),
-    radial-gradient(ellipse 720px 520px at 85% 92%,rgba(54,36,119,.08),transparent 60%),
-    var(--bg-tertiary)}
-  .auth-card{width:100%;max-width:26rem;background:var(--surface-elevated);border:1px solid var(--line-default);border-radius:var(--radius-2xl);box-shadow:var(--shadow-lg);padding:2.1rem 2rem 1.9rem}
-  .auth-head{display:flex;flex-direction:column;align-items:center;gap:.55rem;margin-bottom:1.6rem;text-align:center}
-  .auth-head .logo-wrap{width:58px;height:58px;border-radius:var(--radius-xl);background:var(--gradient);color:#fff;display:inline-flex;align-items:center;justify-content:center;box-shadow:var(--shadow-md)}
-  .auth-head h1{font-size:1.25rem;font-weight:800}
-  .auth-head .sub{color:var(--text-muted);font-size:.86rem}
+  .auth-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.25rem;background:#24567D}
+  .auth-panel{width:90%;max-width:1300px;height:min(680px,calc(100dvh - 2.5rem));min-height:560px;display:flex;direction:ltr;flex-wrap:nowrap;overflow:hidden;border-radius:26px;background:var(--bg-primary);box-shadow:0 30px 80px -28px rgba(8,28,52,.6)}
+  .auth-brand{flex:0 1 49.5%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.1rem;padding:2.5rem 2rem;background:#3F7FF5;color:#fff;text-align:center}
+  .auth-logo{width:170px;height:170px;display:block;object-fit:contain;flex:none}
+  .auth-brand-name{font-size:1.15rem;font-weight:800;letter-spacing:.01em;color:#fff}
+  .auth-brand-sub{font-size:.85rem;color:rgba(255,255,255,.82)}
+  .auth-formpanel{flex:1 1 50.5%;min-width:0;direction:rtl;display:flex;align-items:center;justify-content:center;padding:2.5rem;background:var(--bg-primary)}
+  .auth-formwrap{width:100%;max-width:420px}
+  .auth-title{font-size:1.5rem;font-weight:800;color:var(--text-primary);letter-spacing:-.01em;line-height:1.3}
+  .auth-sub{color:var(--text-muted);font-size:.92rem;margin-top:.5rem}
+  .auth-alert{display:block;margin-top:1.4rem;padding:.8rem .95rem;border-radius:12px;background:rgba(212,60,90,.08);border:1px solid rgba(212,60,90,.22);color:#B33050;font-size:.87rem;line-height:1.6}
+  .auth-form{display:flex;flex-direction:column;gap:1.15rem;margin-top:1.75rem}
+  .auth-field{display:flex;flex-direction:column;gap:.45rem}
+  .auth-label{font-size:.86rem;font-weight:700;color:var(--text-secondary)}
+  .auth-input{width:100%;height:48px;padding:.6rem .95rem;background:#fff;border:1px solid var(--line-strong);border-radius:12px;color:var(--text-primary);font-size:.95rem;font-family:inherit;transition:border-color var(--transition-fast),box-shadow var(--transition-fast)}
+  .auth-input::placeholder{color:var(--text-subtle)}
+  .auth-input:hover{border-color:rgba(32,31,28,.32)}
+  .auth-input:focus{outline:none;border-color:#3F7FF5;box-shadow:0 0 0 3px rgba(63,127,245,.16)}
+  .auth-input[dir=ltr]{text-align:left}
+  .auth-btn{display:inline-flex;align-items:center;justify-content:center;width:100%;height:48px;padding:0 1.2rem;background:#3F7FF5;color:#fff;border:1px solid transparent;border-radius:12px;font-size:.95rem;font-weight:750;font-family:inherit;cursor:pointer;transition:filter var(--transition-fast),transform .06s ease}
+  .auth-btn:hover{filter:brightness(1.07)}
+  .auth-btn:active{transform:translateY(1px);filter:brightness(.96)}
+  .auth-btn:focus-visible{outline:2px solid #3F7FF5;outline-offset:2px}
+  .auth-btn:disabled{background:#B9C6D4;color:#fff;cursor:default;transform:none;filter:none}
+  .auth-link-row{text-align:center;margin-top:-.3rem}
+  .auth-link{font-size:.85rem;font-weight:700;color:#3F7FF5;text-decoration:none}
+  .auth-link:hover{text-decoration:underline}
+  .auth-success{display:block;margin-top:1.4rem;padding:.8rem .95rem;border-radius:12px;background:rgba(40,167,112,.09);border:1px solid rgba(40,167,112,.25);color:#147A4B;font-size:.87rem;line-height:1.6}
   .field{display:block;margin-bottom:1.1rem}
   .field label{display:block;font-weight:700;font-size:.88rem;margin-bottom:.4rem;color:var(--text-secondary)}
   .field input{width:100%;padding:.68rem .85rem;background:#fff;border:1px solid var(--line-strong);border-radius:var(--radius-md);color:var(--text-primary);font-size:.95rem;font-family:inherit}
   .field input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
   .alert{padding:.78rem 1rem;border-radius:var(--radius-md);font-size:.88rem;margin-bottom:1.15rem}
   .alert.error{background:rgba(179,71,63,.07);color:var(--error);border:1px solid rgba(179,71,63,.24)}
-  .auth-foot{margin-top:1.4rem;text-align:center;color:var(--text-subtle);font-size:.78rem}
-  .auth-brand{display:inline-flex;align-items:center;gap:.4rem;font-weight:800;color:var(--text-primary)}
+  @media (max-width:920px){
+    .auth-page{padding:1rem}
+    .auth-panel{width:100%;max-width:520px;height:auto;min-height:calc(100dvh - 2rem);flex-direction:column;border-radius:24px}
+    .auth-brand{flex:none;width:100%;height:250px;padding:1.6rem 1.25rem;gap:.8rem}
+    .auth-logo{width:110px;height:110px}
+    .auth-brand-name{font-size:1.02rem}
+    .auth-brand-sub{font-size:.8rem}
+    .auth-formpanel{flex:1;padding:2.1rem 1.5rem 2.4rem}
+    .auth-title{font-size:1.4rem}
+  }
+  @media (max-width:400px){
+    .auth-brand{height:225px}
+    .auth-formpanel{padding:1.8rem 1.15rem 2rem}
+    .auth-input,.auth-btn{height:46px}
+  }
 
   @media (max-width:991px){
     .dash-root{grid-template-columns:1fr}
@@ -327,7 +528,7 @@ const STYLES = `
     .grid-2{grid-template-columns:1fr}
     .content{padding:1.25rem 1rem 2.5rem}
     .top{padding:.7rem 1rem}
-    .user-meta .u-mail{display:none}
+    .user-meta .u-s{display:none}
   }
   @media (max-width:479px){
     .grid-stats{grid-template-columns:1fr 1fr;gap:.7rem}
@@ -340,16 +541,18 @@ const STYLES = `
 const DRAWER_SCRIPT = `<script>(function(){var root=document.getElementById('dash-root');var btn=document.getElementById('nav-toggle');var close=document.getElementById('nav-close');var overlay=document.getElementById('nav-overlay');function set(v){if(root)root.classList.toggle('nav-open',v);if(overlay)overlay.setAttribute('aria-hidden',String(!v))}if(btn)btn.addEventListener('click',function(e){e.stopPropagation();set(true)});if(close)close.addEventListener('click',function(){set(false)});if(overlay)overlay.addEventListener('click',function(){set(false)});document.addEventListener('keydown',function(e){if(e.key==='Escape')set(false)})})();</script>`
 
 export function brandLogoMark(size = 26): string {
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="#6C4DFF"/><circle cx="12" cy="12" r="3.6" fill="rgba(255,255,255,.92)"/><path d="M12 3v2.4M12 18.6V21M3 12h2.4M18.6 12H21M6.3 6.3l1.7 1.7M16 16l1.7 1.7M17.7 6.3L16 8M8 16l-1.7 1.7" stroke="rgba(255,255,255,.85)" stroke-width="1.3" stroke-linecap="round"/></svg>`
+  return `<img class="brand-logo-img" src="/assets/images/photography-pixel-logo.png" alt="شعار Photography Pixel" width="${size}" height="${size}" decoding="async">`
 }
 
 export function htmlDoc(title: string, bodyClass: string, content: string, extra = ''): string {
   return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${escapeHtml(title)}</title>${STYLES}</head><body class="${bodyClass}">${content}${extra}</body></html>`
 }
 
-export function avatarFor(user: Pick<AppUserRow, 'full_name' | 'email'>): string {
-  const name = (user.full_name ?? user.email).trim()
-  const initial = escapeHtml(name.slice(0, 1).toLocaleUpperCase('ar'))
+export function avatarFor(user: Pick<AppUserRow, 'id' | 'full_name' | 'avatar_key'>): string {
+  if (user.avatar_key) {
+    return `<img class="avatar avatar-img" src="/admin/avatar?id=${encodeURIComponent(user.id)}" alt="" width="35" height="35" decoding="async">`
+  }
+  const initial = escapeHtml(profileInitials(user))
   return `<span class="avatar" aria-hidden="true">${initial}</span>`
 }
 
@@ -357,24 +560,100 @@ export function avatarFor(user: Pick<AppUserRow, 'full_name' | 'email'>): string
 // Login page
 //--------------------------------------------------------------------------
 
+const LOGIN_SCRIPT = `<script>(function(){var form=document.getElementById('auth-form');var btn=document.getElementById('auth-submit');if(!form||!btn)return;form.addEventListener('submit',function(){if(btn.disabled)return;btn.disabled=true;btn.textContent='جارٍ التحقق…';});})();</script>`
+
 export function loginPage(error?: string): string {
   const err = error ? escapeHtml(error) : ''
   const content = `
-    <div class="auth-card">
-      <div class="auth-head">
-        <span class="logo-wrap">${brandLogoMark(30)}</span>
-        <h1>لوحة التحكم</h1>
-        <span class="sub">Photography Pixel · الدخول لفريق الإدارة</span>
+    <div class="auth-panel">
+      <div class="auth-brand">
+        <img class="auth-logo" src="/assets/images/photography-pixel-logo.png" alt="شعار Photography Pixel" width="170" height="170" decoding="async">
+        <span class="auth-brand-name">Photography Pixel</span>
+        <span class="auth-brand-sub">لوحة إدارة الوكالة</span>
       </div>
-      ${err ? `<div class="alert error">${escapeHtml(err)}</div>` : ''}
-      <form method="post" action="/admin/login" autocomplete="on">
-        <label class="field"><span class="label" style="display:block;margin-bottom:.4rem">البريد الإلكتروني</span><input type="email" name="email" required autocomplete="username" autofocus dir="ltr"></label>
-        <label class="field"><span class="label" style="display:block;margin-bottom:.4rem">كلمة المرور</span><input type="password" name="password" required autocomplete="current-password"></label>
-        <button class="btn btn-primary" type="submit" style="width:100%">دخول</button>
-      </form>
-      <div class="auth-foot"><span class="auth-brand">${brandLogoMark(16)} Photography Pixel</span></div>
+      <main class="auth-formpanel">
+        <div class="auth-formwrap">
+          <h1 class="auth-title">تسجيل الدخول</h1>
+          <p class="auth-sub">مرحباً بك في لوحة تحكم Photography Pixel</p>
+          ${err ? `<div class="auth-alert" role="alert">${err}</div>` : ''}
+          <form method="post" action="/admin/login" autocomplete="on" id="auth-form" class="auth-form">
+            <label class="auth-field">
+              <span class="auth-label">البريد الإلكتروني</span>
+              <input class="auth-input" type="email" name="email" required autocomplete="username" autofocus dir="ltr" placeholder="name@example.com">
+            </label>
+            <label class="auth-field">
+              <span class="auth-label">كلمة المرور</span>
+              <input class="auth-input" type="password" name="password" required autocomplete="current-password">
+            </label>
+            <button class="auth-btn" type="submit" id="auth-submit">تسجيل الدخول</button>
+            <p class="auth-link-row"><a class="auth-link" href="/admin/recover">نسيت كلمة المرور؟</a></p>
+          </form>
+        </div>
+      </main>
     </div>`
-  return htmlDoc('تسجيل الدخول', 'auth-page', content)
+  return htmlDoc('تسجيل الدخول', 'auth-page', content, LOGIN_SCRIPT)
+}
+
+const AUTH_FORM_OPEN = `
+    <div class="auth-panel">
+      <div class="auth-brand">
+        <img class="auth-logo" src="/assets/images/photography-pixel-logo.png" alt="شعار Photography Pixel" width="170" height="170" decoding="async">
+        <span class="auth-brand-name">Photography Pixel</span>
+        <span class="auth-brand-sub">لوحة إدارة الوكالة</span>
+      </div>
+      <main class="auth-formpanel">
+        <div class="auth-formwrap">`
+
+// Password recovery (Phase 4M): the admin sends a password-reset link to their
+// own email exactly like normal staff accounts. Reset links are one-time and
+// handled purely by Supabase Auth (no custom tokens are stored).
+export function recoverPage(error?: string, sentEmail?: string): string {
+  const err = error ? escapeHtml(error) : ''
+  const sent = sentEmail
+    ? `<div class="auth-success" role="status">أرسلنا رابط استعادة كلمة المرور إلى <strong dir="ltr">${escapeHtml(sentEmail)}</strong>. تحقّق من بريدك واتبع الرابط لإعادة تعيين كلمة المرور.</div>`
+    : ''
+  const content = `${AUTH_FORM_OPEN}
+        <h1 class="auth-title">استعادة كلمة المرور</h1>
+        <p class="auth-sub">اكتب بريدك الإلكتروني وسنرسل لك رابطاً لإعادة التعيين.</p>
+        ${err ? `<div class="auth-alert" role="alert">${err}</div>` : ''}
+        ${sent}
+        <form method="post" action="/admin/recover" autocomplete="on" class="auth-form" id="auth-form">
+          <label class="auth-field">
+            <span class="auth-label">البريد الإلكتروني</span>
+            <input class="auth-input" type="email" name="email" required autocomplete="username" dir="ltr" placeholder="name@example.com">
+          </label>
+          <button class="auth-btn" type="submit" id="auth-submit">إرسال رابط الاستعادة</button>
+          <p class="auth-link-row"><a class="auth-link" href="/admin/login">العودة إلى تسجيل الدخول</a></p>
+        </form>
+      </div></main></div>`
+  return htmlDoc('استعادة كلمة المرور', 'auth-page', content, LOGIN_SCRIPT)
+}
+
+// Reset page: first visit shows the new-password form once a valid recovery
+// session has been exchanged (cookies are set by the middleware). After saving
+// the password the page redirects to the login page.
+export function resetPage(error?: string, notice?: string): string {
+  const err = error ? escapeHtml(error) : ''
+  const n = notice ? `<div class="auth-success" role="status">${escapeHtml(notice)}</div>` : ''
+  const content = `${AUTH_FORM_OPEN}
+        <h1 class="auth-title">كلمة مرور جديدة</h1>
+        <p class="auth-sub">أدخل كلمة المرور الجديدة لحسابك في لوحة التحكم.</p>
+        ${err ? `<div class="auth-alert" role="alert">${err}</div>` : ''}
+        ${n}
+        <form method="post" action="/admin/reset" autocomplete="new-password" class="auth-form" id="auth-form">
+          <label class="auth-field">
+            <span class="auth-label">كلمة المرور الجديدة</span>
+            <input class="auth-input" type="password" name="password" required minlength="8" autocomplete="new-password">
+          </label>
+          <label class="auth-field">
+            <span class="auth-label">تأكيد كلمة المرور</span>
+            <input class="auth-input" type="password" name="confirm" required minlength="8" autocomplete="new-password">
+          </label>
+          <button class="auth-btn" type="submit" id="auth-submit">حفظ كلمة المرور</button>
+          <p class="auth-link-row"><a class="auth-link" href="/admin/login">العودة إلى تسجيل الدخول</a></p>
+        </form>
+      </div></main></div>`
+  return htmlDoc('كلمة مرور جديدة', 'auth-page', content, LOGIN_SCRIPT)
 }
 
 //--------------------------------------------------------------------------
@@ -385,6 +664,7 @@ export type ShellOptions = {
   active: RouteKey
   user: AppUserRow
   crumbs?: string
+  bodyClass?: string
 }
 
 function sideHtml(user: AppUserRow, active: RouteKey): string {
@@ -404,7 +684,7 @@ function sideHtml(user: AppUserRow, active: RouteKey): string {
       </div>
       <nav class="nav-rail" aria-label="التنقل الرئيسي">${nav}</nav>
       <div class="side-foot">
-        <div class="side-user">${avatarFor(user)}<div class="meta"><div class="n">${escapeHtml(user.full_name ?? user.email)}</div><div class="r">${roleLabel(user.role_key)}</div></div></div>
+        <div class="side-user">${avatarFor(user)}<div class="meta"><div class="n">${escapeHtml(profileDisplayName(user))}</div><div class="r">${roleLabel(user.role_key)}</div></div></div>
       </div>
     </aside>`
 }
@@ -419,15 +699,16 @@ function topHtml(title: string, user: AppUserRow, crumbs?: string): string {
         ${crumb}
       </div>
       <div class="user-area">
-        <div class="user-meta"><div class="u-n">${escapeHtml(user.full_name ?? user.email)}</div><div class="u-mail">${escapeHtml(user.email)}</div></div>
+        <div class="user-meta"><div class="u-n">${escapeHtml(profileDisplayName(user))}</div><div class="u-s">${roleLabel(user.role_key)}</div></div>
         ${avatarFor(user)}
+        <a class="logout-btn" href="/admin/search" title="بحث عام في العملاء والمشاريع والموديلات والتوصيلات">${shellIcon('search', 16)}<span>بحث</span></a>
         <a class="logout-btn" href="/admin/logout">${shellIcon('logout', 17)}<span>خروج</span></a>
       </div>
     </header>`
 }
 
-export function shell(title: string, content: string, options: ShellOptions): string {
-  const { active, user, crumbs } = options
+export function shell(title: string, content: string, options: ShellOptions, extra = ''): string {
+  const { active, user, crumbs, bodyClass } = options
   const body = `
     <div class="dash-root" id="dash-root">
       ${sideHtml(user, active)}
@@ -438,7 +719,8 @@ export function shell(title: string, content: string, options: ShellOptions): st
         <footer class="dash-foot">Photography Pixel — لوحة التحكم</footer>
       </div>
     </div>`
-  const doc = htmlDoc(title, 'dash', body, DRAWER_SCRIPT)
+  const bodyClassValue = bodyClass ? `dash ${bodyClass}` : 'dash'
+  const doc = htmlDoc(title, bodyClassValue, body, DRAWER_SCRIPT + extra)
   return doc
 }
 

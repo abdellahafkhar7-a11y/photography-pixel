@@ -1,217 +1,268 @@
 import type { PagesFunction } from '@cloudflare/workers-types'
-import { html, requireSession } from '../_lib/auth'
+import { requireSession } from '../_lib/auth'
 import { sameOrigin } from '../_lib/security'
 import { siteUrl, type DeliveryEnv } from '../../_lib/env'
-import type { RoleKey } from '../../_lib/db-types'
-import {
-  adminTopbar,
-  brandPage,
-  escapeHtml,
-  icon,
-} from '../../_lib/brand'
 import { generatePrivateToken, hashPrivateToken } from '../../_lib/tokens'
+import { renderDeliveryNew } from '../_lib/delivery-views'
 import {
+  adminHtml,
   formString,
   loadDeliveryDetail,
   loadPortfolioCatalog,
   resolveClient,
   serviceFrom,
-  type PortfolioOption,
+  stableClientVisibleId,
 } from './_helpers'
 import { renderDetailPage } from './[id]/index'
 
 type Route = PagesFunction<DeliveryEnv, never, Record<string, unknown>>
 
+// The portfolio "إنشاء رابط" modal POSTs with Accept: application/json and
+// expects the private link back without a page reload. Classic form posts
+// (Accept: text/html) keep the existing full-page behaviour.
+function wantsJson(request: Request): boolean {
+  return (request.headers.get('accept') ?? '').includes('application/json')
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'private, no-store',
+    },
+  })
+}
+
 type ClientOption = { id: string; name: string; whatsapp_number: string }
 
-function roleOf(roleKey: string): RoleKey {
-  return roleKey === 'owner' ? 'owner' : 'coordinator'
+type FormValues = {
+  clientId: string
+  name: string
+  whatsapp: string
+  source: string
+  portfolioUrls: string[]
+  mode: string
 }
 
-type FormValues = { clientId: string; name: string; whatsapp: string; source: string; portfolioUrl: string }
-
-function groupedPortfolioHtml(options: PortfolioOption[]): string {
-  const byCategory = new Map<string, { count: number; items: string[] }>()
-  for (const opt of options) {
-    const entry = byCategory.get(opt.category)
-    const index = entry ? entry.count : 1
-    const optionHtml = `<option value="${escapeHtml(opt.url)}">فيديو ${index} — ${escapeHtml(opt.category)}</option>`
-    if (entry) {
-      entry.count += 1
-      entry.items.push(optionHtml)
-    } else {
-      byCategory.set(opt.category, { count: 2, items: [optionHtml] })
-    }
-  }
-  if (byCategory.size === 0) {
-    return `<option value="">لا توجد فيديوهات (عذرا)</option>`
-  }
-  return [...byCategory.entries()]
-    .map(([category, entry]) => `<optgroup label="${escapeHtml(category)}">${entry.items.join('')}</optgroup>`)
-    .join('')
-}
-
-function renderNewForm(
-  role: RoleKey,
-  clients: ClientOption[],
-  portfolio: PortfolioOption[],
-  values: FormValues,
-  error?: string,
-): string {
-  const isOwner = role === 'owner'
-  const clientOptions = clients
-    .map(
-      (client) =>
-        `<option value="${client.id}"${client.id === values.clientId ? ' selected' : ''}>${escapeHtml(client.name)} — <span dir="ltr">${escapeHtml(client.whatsapp_number)}</span></option>`,
-    )
-    .join('')
-  const sourceRadio = (value: string, label: string, hint: string): string =>
-    `<label class="card" style="cursor:pointer;display:block;margin-top:0">
-       <input type="radio" name="source_type" value="${value}"${values.source === value ? ' checked' : ''} style="accent-color:var(--accent)">
-       <strong>${label}</strong><span class="muted" style="display:block">${hint}</span>
-     </label>`
-  return brandPage(
-    'توصيل جديد',
-    `${adminTopbar('new', role)}
-     <div class="between" style="margin-bottom:1.25rem">
-       <div><h1>توصيل جديد</h1><p class="muted">أنشئ رابطاً خاصاً لتسليم فيديو لعميل.</p></div>
-     </div>
-     ${error ? `<div class="alert error">${escapeHtml(error)}</div>` : ''}
-     <form method="post" action="/admin/deliveries/new">
-       <div class="card">
-         <h2>العميل</h2>
-         <label class="field"><span>اختيار عميل موجود</span>
-           <select name="client_id">
-             <option value="">— عميل جديد —</option>
-             ${clientOptions}
-           </select>
-         </label>
-         <div class="grid2">
-           <label class="field"><span>اسم العميل</span>
-             <input type="text" name="name" value="${escapeHtml(values.name)}" placeholder="مثال: سارة أمين" autocomplete="off">
-           </label>
-           <label class="field"><span>رقم الواتساب</span>
-             <input type="tel" name="whatsapp" value="${escapeHtml(values.whatsapp)}" placeholder="0663493003" dir="ltr" autocomplete="off">
-           </label>
-         </div>
-       </div>
-       <div class="card">
-         <h2>مصدر الفيديو</h2>
-         <div class="grid2">
-           ${sourceRadio('portfolio', 'من المعرض العام', 'اختر فيديو من أعمالك المنشورة على الموقع.')}
-           ${isOwner ? sourceRadio('r2', 'فيديو خاص', 'الفيديو خاص لا يُعرض على الموقع؛ سيُرفع الملف الأصلي بعد الإنشاء. متاح لصاحب الموقع.') : ''}
-         </div>
-         <label class="field" style="margin-top:1.25rem" id="portfolio-field"><span>اختر الفيديو</span>
-           <select name="portfolio_url">${groupedPortfolioHtml(portfolio)}</select>
-           <span class="hint">يفتح عند العميل داخل صفحة العرض الحصري.</span>
-         </label>
-       </div>
-       <div class="actionbar">
-         <button class="btn btn-primary" type="submit">${icon('link')} إنشاء رابط التوصيل</button>
-         <a class="btn btn-subtle" href="/admin/deliveries">إلغاء</a>
-       </div>
-     </form>`,
-  )
+async function loadClients(service: NonNullable<ReturnType<typeof serviceFrom>>): Promise<ClientOption[]> {
+  const { data } = await service
+    .from('clients')
+    .select('id, name, whatsapp_number')
+    .order('name')
+    .returns<ClientOption[]>()
+  return data ?? []
 }
 
 export const onRequestGet: Route = async (context) => {
   const appUser = await requireSession(context)
   if (appUser instanceof Response) return appUser
-  const role = roleOf(appUser.role_key)
-  const service = serviceFrom(context)
-  if (!service) return html(renderNewForm(role, [], [], { clientId: '', name: '', whatsapp: '', source: 'portfolio', portfolioUrl: '' }, 'النظام غير مهيأ.'))
 
-  const { data: clients } = await service
-    .from('clients')
-    .select('id, name, whatsapp_number')
-    .order('name')
-    .returns<ClientOption[]>()
+  const service = serviceFrom(context)
+  if (!service) {
+    return adminHtml(
+      renderDeliveryNew(
+        appUser,
+        [],
+        [],
+        { clientId: '', name: '', whatsapp: '', source: 'portfolio', portfolioUrls: [], mode: 'VIEW_AND_DOWNLOAD' },
+        'النظام غير مهيأ.',
+      ),
+    )
+  }
+  const clients = await loadClients(service)
   const portfolio = await loadPortfolioCatalog(context)
-  return html(
-    renderNewForm(role, clients ?? [], portfolio, { clientId: '', name: '', whatsapp: '', source: 'portfolio', portfolioUrl: '' }),
+
+  // Support /admin/deliveries/new?portfolio_url=… (multi-value; choosing videos
+  // from the Portfolio module) and ?client_id=… preselects. Both are validated
+  // server side against the real catalog; invalid values are silently ignored.
+  const params = new URL(context.request.url).searchParams
+  const preselectUrls = (params.getAll('portfolio_url') ?? [])
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0 && portfolio.some((option) => option.url === value))
+  const preselectClient = params.get('client_id') ?? ''
+  const selectedClient = clients.some((client) => client.id === preselectClient) ? preselectClient : ''
+
+  return adminHtml(
+    renderDeliveryNew(appUser, clients, portfolio, {
+      clientId: selectedClient,
+      name: '',
+      whatsapp: '',
+      source: 'portfolio',
+      portfolioUrls: preselectUrls,
+      mode: 'VIEW_AND_DOWNLOAD',
+    }),
   )
 }
 
 export const onRequestPost: Route = async (context) => {
-  if (!sameOrigin(context.request)) return html('<p>طلب غير صالح.</p>', 403)
+  if (!sameOrigin(context.request)) {
+    return wantsJson(context.request)
+      ? jsonResponse({ ok: false, error: 'طلب غير صالح.' }, 403)
+      : adminHtml('<p>طلب غير صالح.</p>', 403)
+  }
   const appUser = await requireSession(context)
   if (appUser instanceof Response) return appUser
-  const role = roleOf(appUser.role_key)
+  const isOwner = appUser.role_key === 'owner'
   const service = serviceFrom(context)
   const base = siteUrl(context.env, context.request)
+  const jsonMode = wantsJson(context.request)
 
   const form = await context.request.formData()
+  const sourceType = formString(form.get('source_type')) || 'portfolio'
   const values: FormValues = {
     clientId: formString(form.get('client_id')),
     name: formString(form.get('name')),
     whatsapp: formString(form.get('whatsapp')),
-    source: formString(form.get('source_type')) || 'portfolio',
-    portfolioUrl: formString(form.get('portfolio_url')),
+    source: sourceType,
+    portfolioUrls: (form.getAll('portfolio_url') ?? [])
+      .map((entry) => (typeof entry === 'string' ? formString(entry) : ''))
+      .filter((value) => value.length > 0),
+    mode: formString(form.get('delivery_mode')) || 'VIEW_AND_DOWNLOAD',
   }
 
-  if (!service) {
-    return html(renderNewForm(role, [], [], values, 'النظام غير مهيأ.'))
+  const formError = (message: string): Response => {
+    if (jsonMode) return jsonResponse({ ok: false, error: message }, 400)
+    return adminHtml(renderDeliveryNew(appUser, [], [], values, message))
   }
+
+  if (!service) return formError('النظام غير مهيأ.')
 
   const source = values.source === 'r2' ? 'r2' : 'portfolio'
-  if (source === 'r2' && role !== 'owner') {
-    const clients = (await service.from('clients').select('id, name, whatsapp_number').order('name').returns<ClientOption[]>()).data ?? []
+  if (source === 'r2' && !isOwner) {
+    const clients = await loadClients(service)
     const portfolio = await loadPortfolioCatalog(context)
-    return html(renderNewForm(role, clients, portfolio, values, 'الفيديو الخاص متاح لصاحب الموقع فقط.'))
+    return jsonMode
+      ? jsonResponse({ ok: false, error: 'الفيديو الخاص متاح لصاحب الموقع فقط.' }, 403)
+      : adminHtml(renderDeliveryNew(appUser, clients, portfolio, values, 'الفيديو الخاص متاح لصاحب الموقع فقط.'))
   }
 
-  if (source === 'portfolio' && !values.portfolioUrl) {
-    const clients = (await service.from('clients').select('id, name, whatsapp_number').order('name').returns<ClientOption[]>()).data ?? []
+  if (source === 'portfolio' && values.portfolioUrls.length === 0) {
+    const clients = await loadClients(service)
     const portfolio = await loadPortfolioCatalog(context)
-    return html(renderNewForm(role, clients, portfolio, values, 'اختر فيديو من المعرض العام.'))
+    return jsonMode
+      ? jsonResponse({ ok: false, error: 'اختر فيديو واحداً على الأقل من المعرض العام.' }, 400)
+      : adminHtml(renderDeliveryNew(appUser, clients, portfolio, values, 'اختر فيديو واحداً على الأقل من المعرض العام.'))
   }
 
-  const clientResult = await resolveClient(service, appUser.id, values.clientId || null, values.name, values.whatsapp)
-  if (!clientResult.ok) {
-    const clients = (await service.from('clients').select('id, name, whatsapp_number').order('name').returns<ClientOption[]>()).data ?? []
+  if (source === 'portfolio') {
     const portfolio = await loadPortfolioCatalog(context)
-    return html(renderNewForm(role, clients, portfolio, values, clientResult.error))
+    const validUrls = new Set(portfolio.map((option) => option.url))
+    const invalidUrls = values.portfolioUrls.filter((url) => !validUrls.has(url))
+    if (invalidUrls.length > 0) {
+      const clients = await loadClients(service)
+      return jsonMode
+        ? jsonResponse({ ok: false, error: 'في أحد الفيديوهات المحددة غير موجود في معرض الموقع العام.' }, 400)
+        : adminHtml(
+            renderDeliveryNew(
+              appUser,
+              clients,
+              portfolio,
+              values,
+              'في أحد الفيديوهات المحددة غير موجود في معرض الموقع العام — اختر فيديو من القائمة.',
+            ),
+          )
+    }
+    // Guard against duplicate selections — each item is a distinct video.
+    values.portfolioUrls = [...new Set(values.portfolioUrls)]
+  }
+
+  // Phase 4L — Portfolio "إنشاء رابط": the link is created IMMEDIATELY when no
+  // client info was submitted (the modal never blocks creation on a client
+  // form). No client row is created and none is required; client name/WhatsApp
+  // can still be attached afterwards (owner-only set_client). The classic
+  // HTML form and the r2 source keep requiring client info as before.
+  let clientId: string | null = null
+  let clientName = ''
+  let clientWhatsapp = ''
+  if (source === 'portfolio' && jsonMode && !values.clientId && !values.name.trim() && !values.whatsapp.trim()) {
+    clientId = null
+  } else {
+    const clientResult = await resolveClient(
+      service,
+      appUser.id,
+      values.clientId || null,
+      values.name,
+      values.whatsapp,
+    )
+    if (!clientResult.ok) {
+      const clients = await loadClients(service)
+      const portfolio = await loadPortfolioCatalog(context)
+      return jsonMode
+        ? jsonResponse({ ok: false, error: clientResult.error }, 400)
+        : adminHtml(renderDeliveryNew(appUser, clients, portfolio, values, clientResult.error))
+    }
+    clientId = clientResult.client.id
+    clientName = clientResult.client.name
+    clientWhatsapp = clientResult.client.whatsapp_number
   }
 
   const token = generatePrivateToken()
   const hash = await hashPrivateToken(token)
   const now = new Date().toISOString()
+  const mode: 'VIEW_ONLY' | 'VIEW_AND_DOWNLOAD' = values.mode === 'VIEW_ONLY' ? 'VIEW_ONLY' : 'VIEW_AND_DOWNLOAD'
+  // The delivery id is generated here so the stable /p/<identifier>-<secret>
+  // link can be computed immediately (identifier = client WhatsApp digits or
+  // an id digest for client-less portfolio links).
+  const deliveryId = crypto.randomUUID()
+  const identifier = stableClientVisibleId(clientWhatsapp, deliveryId)
 
   const { data: delivery, error: deliveryError } = await service
     .from('deliveries')
     .insert({
-      client_id: clientResult.client.id,
+      id: deliveryId,
+      client_id: clientId,
       created_by: appUser.id,
       source_type: source,
+      delivery_mode: mode,
+      client_visible_id: identifier,
       private_token_hash: hash,
       token_created_at: now,
     })
     .select('id')
     .single<{ id: string }>()
-  if (deliveryError || !delivery) {
-    const clients = (await service.from('clients').select('id, name, whatsapp_number').order('name').returns<ClientOption[]>()).data ?? []
-    const portfolio = await loadPortfolioCatalog(context)
-    return html(renderNewForm(role, clients, portfolio, values, 'تعذّر إنشاء التوصيل.'))
-  }
+  if (deliveryError || !delivery) return formError('تعذّر إنشاء التوصيل.')
 
   if (source === 'portfolio') {
-    const { error: videoError } = await service.from('delivery_videos').insert({
+    // Phase 4M — one delivery, several videos: each selected portfolio video
+    // becomes its own item (item_pos 1..N, version 1) behind the same private
+    // link. The client sees them all together and the shared 72h window starts
+    // on their FIRST download.
+    const rows = values.portfolioUrls.map((url, index) => ({
       delivery_id: delivery.id,
+      item_pos: index + 1,
       version: 1,
-      source_type: 'portfolio',
-      portfolio_url: values.portfolioUrl,
+      source_type: 'portfolio' as const,
+      portfolio_url: url,
       created_by: appUser.id,
+    }))
+    const { error: videoError } = await service.from('delivery_videos').insert(rows)
+    if (videoError) return formError('تعذّر حفظ الفيديوهات.')
+  }
+
+  if (jsonMode) {
+    return jsonResponse({
+      ok: true,
+      deliveryId: delivery.id,
+      token,
+      link: `${base}/p/${identifier}-${token}`,
+      identifier,
+      videoCount: source === 'portfolio' ? values.portfolioUrls.length : undefined,
+      clientName,
+      whatsapp: clientWhatsapp,
     })
-    if (videoError) {
-      const clients = (await service.from('clients').select('id, name, whatsapp_number').order('name').returns<ClientOption[]>()).data ?? []
-      const portfolio = await loadPortfolioCatalog(context)
-      return html(renderNewForm(role, clients, portfolio, values, 'تعذّر حفظ الفيديو.'))
-    }
   }
 
   const detail = await loadDeliveryDetail(service, delivery.id)
-  const notice = source === 'r2'
-    ? 'تم إنشاء التوصيل. ارفع الفيديو الخاص من صفحة التفاصيل ليتفعّل الرابط.'
-    : 'تم إنشاء التوصيل بنجاح.'
-  return html(renderDetailPage(role, base, detail ?? null, { freshToken: token, notice }))
+  // renderDetailPage draws the add-video card from options.portfolio — the
+  // classic POST must feed the same catalog the GET route uses, otherwise the
+  // newly created delivery shows "no videos available" right after creation.
+  const portfolio = await loadPortfolioCatalog(context)
+  const notice =
+    source === 'r2'
+      ? 'تم إنشاء التوصيل. ارفع الفيديو الخاص من صفحة التفاصيل ليتفعّل الرابط.'
+      : 'تم إنشاء التوصيل بنجاح.'
+  return adminHtml(
+    renderDetailPage(appUser, base, detail ?? null, { freshToken: token, identifier, notice, portfolio }),
+  )
 }

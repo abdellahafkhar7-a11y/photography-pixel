@@ -34,6 +34,25 @@ export function isValidTokenFormat(token: string): boolean {
   return TOKEN_PATTERN.test(token)
 }
 
+// Phase 4L stable links look like /p/<identifier>-<secret> where <identifier>
+// is a cosmetic, human-friendly prefix (e.g. the client's international phone
+// digits) and <secret> is the actual random private token. The identifier is
+// NOT a secret; only the secret is hashed and stored. Legacy bare tokens
+// (/p/<secret>) still resolve: we simply treat the whole segment as the secret.
+export type StableToken = {
+  identifier: string | null
+  secret: string
+}
+
+export function splitStableToken(value: string): StableToken {
+  const dash = value.indexOf('-')
+  if (dash === -1) return { identifier: null, secret: value }
+  const identifier = value.slice(0, dash)
+  const secret = value.slice(dash + 1)
+  if (!/^[A-Za-z0-9_-]{1,32}$/.test(identifier)) return { identifier: null, secret: value }
+  return { identifier, secret }
+}
+
 const HEX = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f']
 
 export async function sha256Hex(input: string): Promise<string> {

@@ -2,13 +2,14 @@ import type { AppUsersRow, AppUserRow, RoleKey } from './types'
 import type { Db } from './supabase'
 
 const APP_USER_SELECT =
-  'id,email,full_name,is_active,last_login_at,created_at,roles(key,name)'
+  'id,email,full_name,avatar_key,is_active,last_login_at,created_at,roles(key,name)'
 
 function mapAppUser(row: AppUsersRow): AppUserRow {
   return {
     id: row.id,
     email: row.email,
     full_name: row.full_name,
+    avatar_key: row.avatar_key,
     is_active: row.is_active,
     last_login_at: row.last_login_at,
     created_at: row.created_at,
