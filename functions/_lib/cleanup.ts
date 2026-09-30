@@ -1,10 +1,13 @@
 import { recordActivity } from './activities'
 import { hasSupabaseConfig, type DeliveryEnv } from './env'
+import { notifyOwner } from './notifications'
+import { runReminders } from './reminders'
 import { createServiceClient, type Db } from './supabase'
 
 export type CleanupResult = {
   claimed: number
   originalsDeleted: number
+  notifications: number
   errors: string[]
 }
 
@@ -29,7 +32,7 @@ export async function runCleanup(
   env: DeliveryEnv,
   log: (message: string) => void = () => undefined,
 ): Promise<CleanupResult> {
-  const result: CleanupResult = { claimed: 0, originalsDeleted: 0, errors: [] }
+  const result: CleanupResult = { claimed: 0, originalsDeleted: 0, notifications: 0, errors: [] }
   if (!hasSupabaseConfig(env)) {
     result.errors.push('Supabase configuration is missing')
     return result
@@ -72,6 +75,16 @@ export async function runCleanup(
         }
       }
       await recordActivity(service, delivery.id, 'delivery_expired', { auto: true })
+      await notifyOwner(service, {
+        type: 'delivery_expired',
+        title: 'انتهت صلاحية رابط التوصيل',
+        message: `رابط التوصيل ${delivery.id.slice(0, 8)} انتهت صلاحيته وأصبح غير قابل للتحميل`,
+        entity_type: 'delivery',
+        entity_id: delivery.id,
+        dedupe_key: `delivery_expired:${delivery.id}`,
+      }).then(() => {
+        result.notifications += 1
+      })
     }
   }
 
@@ -95,7 +108,18 @@ export async function runCleanup(
     }
   }
 
-  log(`cleanup: claimed=${result.claimed} originalsDeleted=${result.originalsDeleted}`)
+  // --- Pass 3: reminders (server-side, idempotent via dedupe_key) ----------
+  try {
+    const reminders = await runReminders(service, log)
+    result.notifications += reminders.notifications
+    result.errors.push(...reminders.errors)
+  } catch (err) {
+    result.errors.push(`reminders: ${String(err)}`)
+  }
+
+  log(
+    `cleanup: claimed=${result.claimed} originalsDeleted=${result.originalsDeleted} notifications=${result.notifications}`,
+  )
   return result
 }
 

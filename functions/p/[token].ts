@@ -1,10 +1,11 @@
 import type { PagesFunction } from '@cloudflare/workers-types'
-import { siteUrl, type DeliveryEnv } from '../_lib/env'
+import { shareBaseUrl, type DeliveryEnv } from '../_lib/env'
 import { createServiceClient } from '../_lib/supabase'
 import { isValidTokenFormat, splitStableToken } from '../_lib/tokens'
 import {
   confirmDelivery,
   expireDeliveryIfDue,
+  isCoordinatorMobileLink,
   markPreviewViewed,
   privatePageResponse,
   renderInvalidOrExpiredLinkPage,
@@ -49,7 +50,7 @@ export const onRequestGet: Route = async (context) => {
   // Re-resolve so the rendered badge reflects the preview_viewed transition.
   const fresh = await resolvePrivateDelivery(context.env, token)
   const data = fresh.kind === 'ok' ? fresh.data : resolved.data
-  const base = siteUrl(context.env, context.request)
+  const base = shareBaseUrl(context.env, context.request)
   return privatePageResponse(renderPrivatePage(base, token, data))
 }
 
@@ -66,7 +67,14 @@ export const onRequestPost: Route = async (context) => {
   const service = createServiceClient(context.env)
   if (!service) return invalid
 
-  const base = siteUrl(context.env, context.request)
+  // A Phase 5A mobile link is view-only and has no client confirmation step, so
+  // there is nothing for a POST here to do. Reject it instead of flipping the
+  // delivery status behind the coordinator's back.
+  if (isCoordinatorMobileLink(delivery)) {
+    return new Response(null, { status: 405, headers: { Allow: 'GET' } })
+  }
+
+  const base = shareBaseUrl(context.env, context.request)
   const result = await confirmDelivery(service, delivery.id)
 
   if (result === 'confirmed' || result === 'already') {

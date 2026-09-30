@@ -1,0 +1,48 @@
+{
+  "name": "Photography Pixel — مساحة عمل المنسّق",
+  "short_name": "Photography Pixel",
+  "description": "إنشاء روابط تسليم للعميل من معرض الأعمال ومتابعة حالة التوصيلات.",
+  "lang": "ar",
+  "dir": "rtl",
+  "id": "/admin/m",
+  "start_url": "/admin/m",
+  "scope": "/admin/m",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FAF8F3",
+  "theme_color": "#FFFFFF",
+  "icons": [
+    {
+      "src": "/assets/images/pwa/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/images/pwa/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/images/pwa/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "تسليم جديد",
+      "short_name": "تسليم",
+      "url": "/admin/m/new",
+      "icons": [{ "src": "/assets/images/pwa/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "التسليمات",
+      "short_name": "التسليمات",
+      "url": "/admin/m/deliveries",
+      "icons": [{ "src": "/assets/images/pwa/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

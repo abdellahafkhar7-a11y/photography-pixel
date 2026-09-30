@@ -9,6 +9,7 @@
     "lint": "eslint \"functions/**/*.ts\" --max-warnings=0",
     "dev": "wrangler pages dev . --port 8788 --compatibility-date=2026-09-24",
     "db:migrate": "supabase db push",
+    "icons:pwa": "node scripts/build-pwa-icons.mjs",
     "owner:create": "node scripts/bootstrap-owner.mjs",
     "coordinator:create": "node scripts/bootstrap-coordinator.mjs"
   },

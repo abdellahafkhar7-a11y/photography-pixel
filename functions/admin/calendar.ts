@@ -2,8 +2,8 @@ import type { PagesFunction } from '@cloudflare/workers-types'
 import { createServiceClient } from '../_lib/supabase'
 import { html, requireOwner, requireSession } from './_lib/auth'
 import type { Env } from './_lib/env'
-import { renderAnalytics } from './_lib/analytics-views'
-import { emptyAnalyticsData, loadAnalyticsData } from './_lib/analytics-data'
+import { casablancaYm, loadCalendarData } from './_lib/calendar-data'
+import { renderCalendar } from './_lib/calendar-views'
 
 type AdminFunction = PagesFunction<Env, never, Record<string, unknown>>
 
@@ -14,10 +14,13 @@ export const onRequestGet: AdminFunction = async (context) => {
   if (forbidden) return forbidden
 
   const service = createServiceClient(context.env)
-  const params = new URL(context.request.url).searchParams
-  const data = service ? await loadAnalyticsData(service, params) : emptyAnalyticsData()
-  const response = html(renderAnalytics(appUser, data))
-  response.headers.set('Cache-Control', 'private, no-store')
-  response.headers.set('X-Robots-Tag', 'noindex')
-  return response
+  if (!service) return html(renderCalendar(appUser, { ym: '', prevYm: '', nextYm: '', label: '', todayKey: '', events: [] }), 500)
+
+  const url = new URL(context.request.url)
+  const rawMonth = url.searchParams.get('month') ?? ''
+  const currentYm = casablancaYm()
+  const ym = /^\d{4}-\d{2}$/.test(rawMonth) ? rawMonth : currentYm
+
+  const data = await loadCalendarData(service, ym)
+  return html(renderCalendar(appUser, data))
 }

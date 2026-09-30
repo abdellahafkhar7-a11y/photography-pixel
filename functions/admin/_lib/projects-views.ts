@@ -33,6 +33,7 @@ import {
   projectMessageText,
   projectWaLink,
 } from '../../_lib/whatsapp'
+import { REVISION_STATUS_LABEL, nextRevisionStatuses } from '../../_lib/revisions'
 
 //============================================================================
 // Phase 4O — Projects views: list (CRM overview + shoot agenda), the project
@@ -1056,6 +1057,44 @@ export function renderCardDetailPartial(card: CardDetail): string {
     })
     .join('')
 
+  const revisions = card.revisions ?? []
+  const openRevision = revisions.find((r) => r.status !== 'approved')
+  const revisionRows = revisions
+    .map((r) => {
+      const advanceButtons = nextRevisionStatuses(r.status)
+        .map((next) => {
+          const label =
+            next === 'in_progress' ? 'ابدأ التنفيذ' : next === 'pending_review' ? 'إرسال للمراجعة' : next === 'approved' ? 'اعتماد النسخة' : next
+          return `<form method="post" action="/admin/projects/${projectId}" style="display:inline"><input type="hidden" name="action" value="set_revision"><input type="hidden" name="revision_id" value="${r.id}"><input type="hidden" name="status" value="${next}"><input type="hidden" name="slot_id" value="${slot.id}"><input type="hidden" name="tab" value="board"><button class="btn btn-subtle btn-sm" type="submit">${escapeHtml(label)}</button></form>`
+        })
+        .join('')
+      const by = r.created_by ? (card.assignees.find((a) => a.id === r.created_by)?.name ?? r.created_by.slice(0, 8)) : '—'
+      return `<li class="rv-row">
+        <div class="rv-head"><span class="badge rv-${r.status}">V${r.version} · ${REVISION_STATUS_LABEL[r.status]}</span><span class="rv-time">${formatTime(r.requested_at)}</span></div>
+        ${r.reason ? `<div class="rv-reason">${escapeHtml(r.reason)}</div>` : ''}
+        <div class="rv-meta">بواسطة ${escapeHtml(by)}${r.resolved_at ? ` · اُعتمد ${formatTime(r.resolved_at)}` : ''}</div>
+        ${advanceButtons ? `<div class="actionbar">${advanceButtons}</div>` : ''}
+      </li>`
+    })
+    .join('')
+
+  const revisionsPanel = `
+    <div class="cd-section">
+      <div class="cd-section-head">${shellIcon('refresh', 15)} دورات التعديل <span class="pill">النسخة الحالية v${slot.revision_version}</span></div>
+      ${revisions.length > 0 ? `<ul class="rv-list">${revisionRows}</ul>` : `<p class="hint cd-empty">لا توجد دورات تعديل حتى الآن.</p>`}
+      ${openRevision
+        ? `<p class="hint cd-empty">هناك طلب تعديل مفتوح على هذه البطاقة.</p>`
+        : `<form method="post" action="/admin/projects/${projectId}" class="cd-addtask">
+             <input type="hidden" name="action" value="request_revision">
+             <input type="hidden" name="slot_id" value="${slot.id}">
+             <input type="hidden" name="tab" value="board">
+             <div class="cd-addtask-row">
+               <input type="text" name="reason" required minlength="2" placeholder="سبب طلب التعديل…" class="cd-addtask-input">
+               <button class="btn btn-primary btn-sm" type="submit">${shellIcon('plus', 14)} طلب تعديل</button>
+             </div>
+           </form>`}
+    </div>`
+
   return `
   <div class="cd-grid">
     <div class="cd-main">
@@ -1094,6 +1133,8 @@ export function renderCardDetailPartial(card: CardDetail): string {
       </div>
 
       ${deliverPanel}
+
+      ${revisionsPanel}
     </div>
 
     <aside class="cd-side">
@@ -1530,6 +1571,12 @@ const PROJECT_CSS = `
   .cd-activity .act-tag{font-size:.76rem;font-weight:750}
   .cd-activity .act-desc{font-size:.74rem;color:var(--text-muted)}
   .cd-activity .act-time{font-size:.68rem;color:var(--text-muted);opacity:.8}
+  .rv-list{list-style:none;margin:0 0 .5rem;padding:0;display:flex;flex-direction:column;gap:.45rem}
+  .rv-row{display:flex;flex-direction:column;gap:.25rem;padding:.5rem .6rem;border:1px solid var(--line-subtle);border-radius:var(--radius-md);background:var(--bg-primary)}
+  .rv-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap}
+  .rv-reason{font-size:.82rem;color:var(--text-primary);line-height:1.5}
+  .rv-time{font-size:.7rem;color:var(--text-muted)}
+  .rv-meta{font-size:.7rem;color:var(--text-muted)}
 
   /* Task board */
   .t-root{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:.35rem}

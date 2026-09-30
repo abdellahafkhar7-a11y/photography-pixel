@@ -149,6 +149,18 @@ const BRAND_STYLES = `
   .video-item + .video-item{margin-top:1.4rem}
   .video-item-head{display:flex;align-items:center;gap:.5rem;font-weight:700;font-size:.9rem;color:var(--text-secondary);margin-bottom:.6rem}
   .video-item-n{display:inline-flex;align-items:center;justify-content:center;min-width:1.6rem;height:1.6rem;border-radius:999px;background:var(--accent);color:#fff;font-size:.78rem;font-weight:750}
+  .video-item-pill{background:var(--accent-light);color:var(--accent);border-color:rgba(54,36,119,.2)}
+  /* 4R multi-video grid: 9:16 vertical tiles, 2 columns on desktop that can
+     fit them, exactly one column on phones so each video keeps full width. */
+  .video-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.4rem;align-items:start}
+  .video-grid .video-item{margin-top:0;min-width:0}
+  .video-grid .video-frame.vertical{width:auto;height:auto;max-width:100%;max-height:68vh;margin:0 auto;aspect-ratio:9/16}
+  .video-grid .video-frame.vertical video,.video-grid .video-frame.vertical iframe{height:inherit}
+  /* Live download-window countdown (client ticks; server gate stays truth) */
+  .countdown{font-weight:750;white-space:nowrap}
+  @media (max-width:760px){
+    .video-grid{grid-template-columns:1fr}
+  }
   /* Phone-first client page: shorter paddings so the vertical video is the
      main visual with minimal empty space and no extra scroll to reach it. */
   @media (max-width:520px){

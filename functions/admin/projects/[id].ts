@@ -12,6 +12,7 @@ import {
   parseIntOr,
 } from '../deliveries/_helpers'
 import { renderDetailPage } from '../deliveries/[id]/index'
+import { requestRevision, setRevisionStatus } from '../../_lib/revisions'
 import { renderProjectWorkspace, renderCardDetailPartial, renderProjects, type ProjectTabKey } from '../_lib/projects-views'
 import { createSlotDelivery } from '../_lib/clients-data'
 import {
@@ -34,6 +35,7 @@ import type {
   KanbanStatus,
   PaymentStatus,
   ProjectStatus,
+  RevisionStatus,
   TaskPriority,
   TaskStatus,
 } from '../../_lib/db-types'
@@ -298,6 +300,38 @@ export const onRequestPost: AdminFunction = async (context) => {
     const result = await deleteTask(service, { projectId: id, taskId })
     if (!result.ok) return renderWorkspace('', result.error ?? 'تعذّر حذف المهمة.', tab)
     return renderWorkspace('تم حذف المهمة.', '', tab)
+  }
+
+  if (action === 'request_revision') {
+    const slotId = formString(form.get('slot_id'))
+    if (!isValidUuid(slotId)) return renderWorkspace('', 'البطاقة غير معروفة.', tab)
+    const slot = detail.slots.find((item) => item.slot.id === slotId)
+    if (!slot) return renderWorkspace('', 'البطاقة غير موجودة في هذا المشروع.', tab)
+    const result = await requestRevision(service, {
+      slotId,
+      projectId: id,
+      userId: appUser.id,
+      reason: formString(form.get('reason')),
+      slotTitle: slot.slot.title,
+    })
+    if (!result.ok) return renderWorkspace('', result.error, tab)
+    return renderWorkspace('سُجّل طلب التعديل وأُرسل إشعار للمالك.', '', tab)
+  }
+
+  if (action === 'set_revision') {
+    const revisionId = formString(form.get('revision_id'))
+    if (!isValidUuid(revisionId)) return renderWorkspace('', 'طلب التعديل غير معروف.', tab)
+    const rawStatus = formString(form.get('status')) as RevisionStatus
+    const slotId = formString(form.get('slot_id'))
+    const slot = slotId ? detail.slots.find((item) => item.slot.id === slotId) : undefined
+    const result = await setRevisionStatus(service, {
+      revisionId,
+      status: rawStatus,
+      userId: appUser.id,
+      slotTitle: slot?.slot.title,
+    })
+    if (!result.ok) return renderWorkspace('', result.error, tab)
+    return renderWorkspace('تم تحديث دورة التعديل.', '', tab)
   }
 
   return renderWorkspace('', 'إجراء غير معروف.', tab)

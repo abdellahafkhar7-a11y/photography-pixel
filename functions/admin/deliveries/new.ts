@@ -2,16 +2,14 @@ import type { PagesFunction } from '@cloudflare/workers-types'
 import { requireSession } from '../_lib/auth'
 import { sameOrigin } from '../_lib/security'
 import { siteUrl, type DeliveryEnv } from '../../_lib/env'
-import { generatePrivateToken, hashPrivateToken } from '../../_lib/tokens'
 import { renderDeliveryNew } from '../_lib/delivery-views'
 import {
   adminHtml,
+  createDelivery,
   formString,
   loadDeliveryDetail,
   loadPortfolioCatalog,
-  resolveClient,
   serviceFrom,
-  stableClientVisibleId,
 } from './_helpers'
 import { renderDetailPage } from './[id]/index'
 
@@ -43,6 +41,96 @@ type FormValues = {
   source: string
   portfolioUrls: string[]
   mode: string
+}
+
+// The desktop modal posts multipart/form-data with Accept: application/json, and
+// the classic form posts urlencoded, but this route is also a documented JSON
+// endpoint. Calling formData() on a JSON body throws and 500s, so the body is
+// read according to its own content type and both spellings are accepted.
+const FIELD_ALIASES: Record<keyof FormValues, string[]> = {
+  clientId: ['client_id', 'clientId'],
+  name: ['name'],
+  whatsapp: ['whatsapp', 'whatsapp_number', 'whatsappNumber'],
+  source: ['source_type', 'sourceType', 'source'],
+  portfolioUrls: ['portfolio_url', 'portfolio_urls', 'portfolioUrl', 'portfolioUrls', 'videos'],
+  mode: ['delivery_mode', 'deliveryMode', 'mode'],
+}
+
+// A body reader that works for multipart, urlencoded and JSON payloads alike.
+type BodyFields = {
+  get(name: string): string | null
+  getAll(name: string): string[]
+}
+
+function withDefault(value: string, fallback: string): string {
+  return value.trim().length > 0 ? value : fallback
+}
+
+function valuesFrom(source: BodyFields): FormValues {
+  const read = (keys: string[]): string[] => {
+    const out: string[] = []
+    for (const key of keys) {
+      for (const value of source.getAll(key)) out.push(formString(value))
+    }
+    return out.filter((value) => value.length > 0)
+  }
+  const first = (keys: string[]): string => {
+    for (const key of keys) {
+      const value = source.get(key)
+      if (typeof value === 'string') return formString(value)
+    }
+    return ''
+  }
+  return {
+    clientId: first(FIELD_ALIASES.clientId),
+    name: first(FIELD_ALIASES.name),
+    whatsapp: first(FIELD_ALIASES.whatsapp),
+    source: withDefault(first(FIELD_ALIASES.source), 'portfolio'),
+    portfolioUrls: read(FIELD_ALIASES.portfolioUrls),
+    mode: withDefault(first(FIELD_ALIASES.mode), 'VIEW_AND_DOWNLOAD'),
+  }
+}
+
+async function readValues(request: Request): Promise<FormValues> {
+  const contentType = (request.headers.get('content-type') ?? '').toLowerCase()
+  if (contentType.includes('application/json')) {
+    let body: Record<string, unknown> = {}
+    try {
+      const parsed: unknown = await request.json()
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        body = parsed as Record<string, unknown>
+      }
+    } catch {
+      body = {}
+    }
+    const single = (name: string): string | null => {
+      const value = body[name]
+      return typeof value === 'string' ? value : null
+    }
+    return valuesFrom({
+      get: single,
+      getAll: (name) => {
+        const value = body[name]
+        if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === 'string')
+        return single(name) === null ? [] : [String(value)]
+      },
+    })
+  }
+  const formData: FormData = await request.formData()
+  const form: BodyFields = {
+    get: (name) => {
+      const value = formData.get(name)
+      return typeof value === 'string' ? value : null
+    },
+    getAll: (name) => {
+      const values: string[] = []
+      for (const value of formData.getAll(name)) {
+        if (typeof value === 'string') values.push(value)
+      }
+      return values
+    },
+  }
+  return valuesFrom(form)
 }
 
 async function loadClients(service: NonNullable<ReturnType<typeof serviceFrom>>): Promise<ClientOption[]> {
@@ -108,161 +196,77 @@ export const onRequestPost: Route = async (context) => {
   const base = siteUrl(context.env, context.request)
   const jsonMode = wantsJson(context.request)
 
-  const form = await context.request.formData()
-  const sourceType = formString(form.get('source_type')) || 'portfolio'
-  const values: FormValues = {
-    clientId: formString(form.get('client_id')),
-    name: formString(form.get('name')),
-    whatsapp: formString(form.get('whatsapp')),
-    source: sourceType,
-    portfolioUrls: (form.getAll('portfolio_url') ?? [])
-      .map((entry) => (typeof entry === 'string' ? formString(entry) : ''))
-      .filter((value) => value.length > 0),
-    mode: formString(form.get('delivery_mode')) || 'VIEW_AND_DOWNLOAD',
-  }
+  const values = await readValues(context.request)
 
-  const formError = (message: string): Response => {
+  const renderError = async (message: string, status = 200): Promise<Response> => {
     if (jsonMode) return jsonResponse({ ok: false, error: message }, 400)
-    return adminHtml(renderDeliveryNew(appUser, [], [], values, message))
+    const clients = service ? await loadClients(service) : []
+    const portfolio = await loadPortfolioCatalog(context)
+    return adminHtml(renderDeliveryNew(appUser, clients, portfolio, values, message), status)
   }
 
-  if (!service) return formError('النظام غير مهيأ.')
+  if (!service) return renderError('النظام غير مهيأ.')
 
   const source = values.source === 'r2' ? 'r2' : 'portfolio'
-  if (source === 'r2' && !isOwner) {
-    const clients = await loadClients(service)
-    const portfolio = await loadPortfolioCatalog(context)
-    return jsonMode
-      ? jsonResponse({ ok: false, error: 'الفيديو الخاص متاح لصاحب الموقع فقط.' }, 403)
-      : adminHtml(renderDeliveryNew(appUser, clients, portfolio, values, 'الفيديو الخاص متاح لصاحب الموقع فقط.'))
-  }
+  // The catalog is the single source of truth for which videos may be
+  // delivered; the shared creator validates every selected URL against it.
+  const portfolio = source === 'portfolio' ? await loadPortfolioCatalog(context) : []
 
-  if (source === 'portfolio' && values.portfolioUrls.length === 0) {
-    const clients = await loadClients(service)
-    const portfolio = await loadPortfolioCatalog(context)
-    return jsonMode
-      ? jsonResponse({ ok: false, error: 'اختر فيديو واحداً على الأقل من المعرض العام.' }, 400)
-      : adminHtml(renderDeliveryNew(appUser, clients, portfolio, values, 'اختر فيديو واحداً على الأقل من المعرض العام.'))
-  }
+  const result = await createDelivery({
+    service,
+    actorId: appUser.id,
+    isOwner,
+    source,
+    portfolioUrls: values.portfolioUrls,
+    portfolio,
+    clientId: values.clientId,
+    name: values.name,
+    whatsapp: values.whatsapp,
+    clientLabel: '',
+    // Phase 4L: only the JSON "إنشاء رابط" modal may skip the client form.
+    allowClientLess: jsonMode,
+    mode: values.mode,
+    base,
+  })
 
-  if (source === 'portfolio') {
-    const portfolio = await loadPortfolioCatalog(context)
-    const validUrls = new Set(portfolio.map((option) => option.url))
-    const invalidUrls = values.portfolioUrls.filter((url) => !validUrls.has(url))
-    if (invalidUrls.length > 0) {
-      const clients = await loadClients(service)
-      return jsonMode
-        ? jsonResponse({ ok: false, error: 'في أحد الفيديوهات المحددة غير موجود في معرض الموقع العام.' }, 400)
-        : adminHtml(
-            renderDeliveryNew(
-              appUser,
-              clients,
-              portfolio,
-              values,
-              'في أحد الفيديوهات المحددة غير موجود في معرض الموقع العام — اختر فيديو من القائمة.',
-            ),
-          )
-    }
-    // Guard against duplicate selections — each item is a distinct video.
-    values.portfolioUrls = [...new Set(values.portfolioUrls)]
-  }
-
-  // Phase 4L — Portfolio "إنشاء رابط": the link is created IMMEDIATELY when no
-  // client info was submitted (the modal never blocks creation on a client
-  // form). No client row is created and none is required; client name/WhatsApp
-  // can still be attached afterwards (owner-only set_client). The classic
-  // HTML form and the r2 source keep requiring client info as before.
-  let clientId: string | null = null
-  let clientName = ''
-  let clientWhatsapp = ''
-  if (source === 'portfolio' && jsonMode && !values.clientId && !values.name.trim() && !values.whatsapp.trim()) {
-    clientId = null
-  } else {
-    const clientResult = await resolveClient(
-      service,
-      appUser.id,
-      values.clientId || null,
-      values.name,
-      values.whatsapp,
-    )
-    if (!clientResult.ok) {
-      const clients = await loadClients(service)
-      const portfolio = await loadPortfolioCatalog(context)
-      return jsonMode
-        ? jsonResponse({ ok: false, error: clientResult.error }, 400)
-        : adminHtml(renderDeliveryNew(appUser, clients, portfolio, values, clientResult.error))
-    }
-    clientId = clientResult.client.id
-    clientName = clientResult.client.name
-    clientWhatsapp = clientResult.client.whatsapp_number
-  }
-
-  const token = generatePrivateToken()
-  const hash = await hashPrivateToken(token)
-  const now = new Date().toISOString()
-  const mode: 'VIEW_ONLY' | 'VIEW_AND_DOWNLOAD' = values.mode === 'VIEW_ONLY' ? 'VIEW_ONLY' : 'VIEW_AND_DOWNLOAD'
-  // The delivery id is generated here so the stable /p/<identifier>-<secret>
-  // link can be computed immediately (identifier = client WhatsApp digits or
-  // an id digest for client-less portfolio links).
-  const deliveryId = crypto.randomUUID()
-  const identifier = stableClientVisibleId(clientWhatsapp, deliveryId)
-
-  const { data: delivery, error: deliveryError } = await service
-    .from('deliveries')
-    .insert({
-      id: deliveryId,
-      client_id: clientId,
-      created_by: appUser.id,
-      source_type: source,
-      delivery_mode: mode,
-      client_visible_id: identifier,
-      private_token_hash: hash,
-      token_created_at: now,
-    })
-    .select('id')
-    .single<{ id: string }>()
-  if (deliveryError || !delivery) return formError('تعذّر إنشاء التوصيل.')
-
-  if (source === 'portfolio') {
-    // Phase 4M — one delivery, several videos: each selected portfolio video
-    // becomes its own item (item_pos 1..N, version 1) behind the same private
-    // link. The client sees them all together and the shared 72h window starts
-    // on their FIRST download.
-    const rows = values.portfolioUrls.map((url, index) => ({
-      delivery_id: delivery.id,
-      item_pos: index + 1,
-      version: 1,
-      source_type: 'portfolio' as const,
-      portfolio_url: url,
-      created_by: appUser.id,
-    }))
-    const { error: videoError } = await service.from('delivery_videos').insert(rows)
-    if (videoError) return formError('تعذّر حفظ الفيديوهات.')
+  if (!result.ok) {
+    if (jsonMode) return jsonResponse({ ok: false, error: result.error }, result.status)
+    // The classic form keeps its longer, more helpful wording.
+    const message =
+      result.reason === 'invalid_video'
+        ? 'في أحد الفيديوهات المحددة غير موجود في معرض الموقع العام — اختر فيديو من القائمة.'
+        : result.error
+    return renderError(message, result.status)
   }
 
   if (jsonMode) {
     return jsonResponse({
       ok: true,
-      deliveryId: delivery.id,
-      token,
-      link: `${base}/p/${identifier}-${token}`,
-      identifier,
-      videoCount: source === 'portfolio' ? values.portfolioUrls.length : undefined,
-      clientName,
-      whatsapp: clientWhatsapp,
+      deliveryId: result.deliveryId,
+      token: result.token,
+      link: result.link,
+      identifier: result.identifier,
+      videoCount: result.videoCount ?? undefined,
+      clientName: result.clientName,
+      whatsapp: result.clientWhatsapp,
     })
   }
 
-  const detail = await loadDeliveryDetail(service, delivery.id)
+  const detail = await loadDeliveryDetail(service, result.deliveryId)
   // renderDetailPage draws the add-video card from options.portfolio — the
   // classic POST must feed the same catalog the GET route uses, otherwise the
   // newly created delivery shows "no videos available" right after creation.
-  const portfolio = await loadPortfolioCatalog(context)
+  const catalog = source === 'portfolio' ? portfolio : await loadPortfolioCatalog(context)
   const notice =
     source === 'r2'
       ? 'تم إنشاء التوصيل. ارفع الفيديو الخاص من صفحة التفاصيل ليتفعّل الرابط.'
       : 'تم إنشاء التوصيل بنجاح.'
   return adminHtml(
-    renderDetailPage(appUser, base, detail ?? null, { freshToken: token, identifier, notice, portfolio }),
+    renderDetailPage(appUser, base, detail ?? null, {
+      freshToken: result.token,
+      identifier: result.identifier,
+      notice,
+      portfolio: catalog,
+    }),
   )
 }

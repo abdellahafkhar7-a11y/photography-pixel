@@ -1,5 +1,5 @@
 import type { AppUserRow } from './types'
-import type { DeliveryActivityType, DeliveryStatus } from '../../_lib/db-types'
+import type { CommunicationChannel, CommunicationDirection, DeliveryActivityType, DeliveryStatus, NotificationsRow } from '../../_lib/db-types'
 import type { DashboardData } from './dashboard-data'
 import { DELIVERY_STATUS_ORDER } from './dashboard-data'
 import type { PortfolioCategory } from './portfolio-data'
@@ -140,6 +140,97 @@ function projectList(data: DashboardData): string {
     .join('')}</div>`
 }
 
+//--------------------------------------------------------------------------
+// Phase 4R — Dashboard widgets: notifications, communication ledger preview,
+// and expiring-soon client links. Purely additive; existing panels untouched.
+//--------------------------------------------------------------------------
+
+const COMMUNICATION_CHANNEL_LABEL: Record<CommunicationChannel, string> = {
+  whatsapp: 'واتساب',
+  email: 'بريد',
+  internal: 'ملاحظة',
+  system: 'النظام',
+}
+
+const COMMUNICATION_DIRECTION_LABEL: Record<CommunicationDirection, string> = {
+  outbound: 'صادر',
+  inbound: 'وارد',
+  system: 'تلقائي',
+}
+
+function fmtRel(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'الآن'
+  if (mins < 60) return `منذ ${mins} د`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `منذ ${hours} س`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `منذ ${days} يوم`
+  return new Date(iso).toLocaleDateString('ar-MA', { day: 'numeric', month: 'long' })
+}
+
+function remainingLabel(iso: string): string {
+  const remaining = new Date(iso).getTime() - Date.now()
+  const hours = Math.max(0, Math.floor(remaining / 3600000))
+  if (hours < 1) return 'أقل من ساعة'
+  if (hours < 24) return `${hours} ساعة متبقية`
+  return `${Math.floor(hours / 24)} يوم متبقٍ`
+}
+
+function notificationHref(row: NotificationsRow): string {
+  if (!row.entity_id) return '/admin'
+  if (row.entity_type === 'project') return `/admin/projects/${row.entity_id}`
+  if (row.entity_type === 'delivery') return '/admin/deliveries'
+  return '/admin'
+}
+
+function notificationWidget(data: DashboardData): string {
+  if (data.notifications.items.length === 0) {
+    return miniEmpty('لا توجد إشعارات.',
+      `<a class="btn btn-subtle" href="/admin/api/notifications?format=page">${shellIcon('bell', 15)} سجل الإشعارات</a>`)
+  }
+  return `<div class="notif-body" style="max-height:none">${data.notifications.items
+    .map((n) => {
+      const cls = n.read_at ? 'notif-row read' : 'notif-row unread'
+      return `<a class="${cls}" href="${notificationHref(n)}">
+        <span class="notif-dot"></span>
+        <span class="notif-body-c">
+          <span class="t">${escapeHtml(n.title)}</span>
+          ${n.message ? `<span class="m">${escapeHtml(n.message)}</span>` : ''}
+          <span class="d">${fmtRel(n.created_at)}</span>
+        </span>
+      </a>`
+    })
+    .join('')}</div>`
+}
+
+function communicationWidget(data: DashboardData): string {
+  if (data.recentCommunications.length === 0) return miniEmpty('لا يوجد تواصل مسجّل بعد.')
+  return `<div class="client-list">${data.recentCommunications
+    .map((c) => {
+      const direction = COMMUNICATION_DIRECTION_LABEL[c.direction] ?? c.direction
+      const channel = COMMUNICATION_CHANNEL_LABEL[c.channel] ?? c.channel
+      return `<div class="client-row"><span class="badge st-preview_viewed" style="white-space:nowrap">${direction} · ${channel}</span><div class="c-body"><div class="c-name" style="font-weight:500">${escapeHtml(c.message)}</div></div><time class="c-time">${fmtRel(c.createdAt)}</time></div>`
+    })
+    .join('')}</div>`
+}
+
+function expiringWidget(data: DashboardData): string {
+  if (data.expiringLinks.length === 0) {
+    return miniEmpty('لا توجد روابط على وشك الانتهاء خلال 72 ساعة.')
+  }
+  return `<div class="client-list">${data.expiringLinks
+    .slice(0, 6)
+    .map((link) => {
+      const client = link.clientName ? escapeHtml(link.clientName) : 'بدون عميل'
+      const trigger =
+        link.trigger === 'download' ? 'مهلة تحميل' : 'انتهاء الرابط'
+      return `<div class="client-row"><span class="c-avatar" aria-hidden="true">${shellIcon('clock', 15)}</span><div class="c-body"><div class="c-name">${client} <span class="badge st-${link.trigger === 'download' ? 'download_available' : 'preview_viewed'}" style="white-space:nowrap">${trigger}</span></div><div class="c-wa">${remainingLabel(link.expiresAt)}</div></div><a class="btn btn-text" href="/admin/deliveries/${link.id}">فتح</a></div>`
+    })
+    .join('')}</div>`
+}
+
 export function renderDashboard(appUser: AppUserRow, data: DashboardData): string {
   const name = appUser.full_name ?? appUser.email
   const isOwner = appUser.role_key === 'owner'
@@ -200,8 +291,28 @@ export function renderDashboard(appUser: AppUserRow, data: DashboardData): strin
     </div>
 
     <div class="grid-2" style="margin-top:1rem">
+      ${panel('الإشعارات', 'bell', notificationWidget(data), {
+        action:
+          data.notifications.unread > 0
+            ? `<span class="pill warning" style="margin-inline-end:.5rem">${data.notifications.unread} غير مقروء</span><a class="section-link" href="/admin/api/notifications?format=page">عرض الإشعارات</a>`
+            : `<a class="section-link" href="/admin/api/notifications?format=page">عرض الإشعارات</a>`,
+      })}
+      ${panel('آخر التواصل', 'whatsapp', communicationWidget(data), {
+        action: `<a class="section-link" href="/admin/deliveries">إلى التسليمات</a>`,
+      })}
+    </div>
+
+    <div class="grid-2" style="margin-top:1rem">
+      ${panel('روابط تنتهي قريباً', 'clock', expiringWidget(data), {
+        action:
+          data.expiringLinks.length > 0
+            ? `<a class="section-link" href="/admin/deliveries">كل التسليمات</a>`
+            : '',
+      })}
       ${panel('إجراءات سريعة', 'sparkle', `<div class="qrow">${quickActions}</div>`, {})}
-      <div class="card shortcut" style="margin-top:0">
+    </div>
+
+    <div class="card shortcut" style="margin-top:1rem">
         <span class="ico-chip">${shellIcon('image', 18)}</span>
         <div class="sc-body"><h2>الأعمال</h2><p class="muted">استكشف أعمال المعرض وملخص المحتوى.</p></div>
         <div class="sc-actions"><a class="btn btn-subtle" href="/admin/portfolio">${shellIcon('arrowLeft', 15)}<span>استكشف Portfolio</span></a></div>

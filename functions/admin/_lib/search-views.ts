@@ -15,6 +15,22 @@ export type SearchResults = {
   clients: { id: string; name: string; whatsapp_number: string; status: string }[]
   models: { id: string; name: string; photo: string | null }[]
   deliveries: DeliveryListItem[]
+  slots?: { id: string; title: string; notes: string | null; kanban_status: string; project_id: string }[]
+  tasks?: { id: string; title: string; status: string; project_id: string }[]
+}
+
+const KANBAN_LABEL: Record<string, string> = {
+  todo: 'في الانتظار',
+  editing: 'قيد التعديل',
+  review: 'قيد المراجعة',
+  ready: 'جاهز',
+  done: 'مكتمل',
+}
+
+const TASK_STATUS_LABEL: Record<string, string> = {
+  todo: 'للتنفيذ',
+  in_progress: 'قيد التنفيذ',
+  done: 'منجزة',
 }
 
 const GMT_FMT = new Intl.DateTimeFormat('ar-MA', {
@@ -82,6 +98,42 @@ function modelSection(models: SearchResults['models']): string {
   </table></div>`
 }
 
+function slotSection(slots: NonNullable<SearchResults['slots']>): string {
+  if (!slots.length) return `<p class="muted">لا فيديوهات إنتاجية مطابقة.</p>`
+  return `<div class="table-wrap"><table class="tbl">
+    <thead><tr><th>الفيديو</th><th>المرحلة</th><th>المشروع</th></tr></thead>
+    <tbody>${slots
+      .slice(0, 12)
+      .map(
+        (s) => `<tr>
+          <td><a href="/admin/projects/${s.project_id}"><b>${escapeHtml(s.title)}</b></a></td>
+          <td><span class="badge st-confirmed">${escapeHtml(KANBAN_LABEL[s.kanban_status] ?? s.kanban_status)}</span></td>
+          <td class="hint">فتح المشروع</td>
+        </tr>`,
+      )
+      .join('')}
+    </tbody>
+  </table></div>`
+}
+
+function taskSection(tasks: NonNullable<SearchResults['tasks']>): string {
+  if (!tasks.length) return `<p class="muted">لا مهام مطابقة.</p>`
+  return `<div class="table-wrap"><table class="tbl">
+    <thead><tr><th>المهمة</th><th>الحالة</th><th>المشروع</th></tr></thead>
+    <tbody>${tasks
+      .slice(0, 12)
+      .map(
+        (t) => `<tr>
+          <td><a href="/admin/projects/${t.project_id}"><b>${escapeHtml(t.title)}</b></a></td>
+          <td><span class="badge">${escapeHtml(TASK_STATUS_LABEL[t.status] ?? t.status)}</span></td>
+          <td class="hint">فتح المشروع</td>
+        </tr>`,
+      )
+      .join('')}
+    </tbody>
+  </table></div>`
+}
+
 function deliverySection(deliveries: SearchResults['deliveries']): string {
   if (!deliveries.length) return `<p class="muted">لا توصيلات مطابقة.</p>`
   return `<div class="table-wrap"><table class="tbl">
@@ -110,8 +162,15 @@ function deliverySection(deliveries: SearchResults['deliveries']): string {
 
 export function renderSearch(appUser: AppUserRow, results: SearchResults): string {
   const q = results.query.trim()
+  const slots = results.slots ?? []
+  const tasks = results.tasks ?? []
   const total =
-    results.projects.length + results.clients.length + results.models.length + results.deliveries.length
+    results.projects.length +
+    results.clients.length +
+    results.models.length +
+    results.deliveries.length +
+    slots.length +
+    tasks.length
 
   const content = q ? `
   <div class="page-head">
@@ -134,6 +193,16 @@ export function renderSearch(appUser: AppUserRow, results: SearchResults): strin
   <div class="panel" style="margin-block-end:1rem">
     <div class="panel-head"><span class="ico-chip">${shellIcon('users', 18)}</span><h2>الموديلات <span class="soon-tag">${results.models.length}</span></h2></div>
     <div class="panel-body">${modelSection(results.models)}</div>
+  </div>
+
+  <div class="panel" style="margin-block-end:1rem">
+    <div class="panel-head"><span class="ico-chip">${shellIcon('video', 18)}</span><h2>الفيديوهات الإنتاجية <span class="soon-tag">${slots.length}</span></h2></div>
+    <div class="panel-body">${slotSection(slots)}</div>
+  </div>
+
+  <div class="panel" style="margin-block-end:1rem">
+    <div class="panel-head"><span class="ico-chip">${shellIcon('check', 18)}</span><h2>المهام <span class="soon-tag">${tasks.length}</span></h2></div>
+    <div class="panel-body">${taskSection(tasks)}</div>
   </div>
 
   <div class="panel">

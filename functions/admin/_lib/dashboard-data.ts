@@ -1,5 +1,6 @@
 import type { Db } from '../../_lib/supabase'
-import type { DeliveryActivityType, DeliveryStatus } from '../../_lib/db-types'
+import { listNotifications } from '../../_lib/notifications'
+import type { NotificationsRow, CommunicationChannel, CommunicationDirection, DeliveryActivityType, DeliveryStatus } from '../../_lib/db-types'
 import type { RoleKey } from './types'
 import { ACTIVITY_LABEL } from '../deliveries/_helpers'
 
@@ -36,6 +37,26 @@ export type DashboardShoot = {
   shootTime: string | null
 }
 
+export type DashboardCommunication = {
+  id: string
+  channel: CommunicationChannel
+  direction: CommunicationDirection
+  message: string
+  createdAt: string
+}
+
+export type DashboardExpiringLink = {
+  id: string
+  clientName: string | null
+  trigger: 'link' | 'download'
+  expiresAt: string
+}
+
+export type DashboardNotifications = {
+  unread: number
+  items: NotificationsRow[]
+}
+
 export type DashboardData = {
   clientsCount: number
   deliveriesCount: number
@@ -45,6 +66,9 @@ export type DashboardData = {
   statusCounts: DeliveryStatusCounts
   recentActivity: DashboardActivity[]
   recentClients: DashboardClient[]
+  notifications: DashboardNotifications
+  recentCommunications: DashboardCommunication[]
+  expiringLinks: DashboardExpiringLink[]
 }
 
 export const DELIVERY_STATUS_ORDER: readonly DeliveryStatus[] = [
@@ -58,6 +82,10 @@ export const DELIVERY_STATUS_ORDER: readonly DeliveryStatus[] = [
 
 const RECENT_ACTIVITY_LIMIT = 8
 const RECENT_CLIENTS_LIMIT = 5
+const RECENT_COMMUNICATIONS_LIMIT = 6
+const RECENT_NOTIFICATIONS_LIMIT = 6
+const DEADLINE_SCAN_LIMIT = 250
+const EXPIRING_WINDOW_MS = 72 * 60 * 60 * 1000
 
 type ActivityRow = {
   id: string
@@ -83,6 +111,23 @@ type ProjectShootRow = {
   clients: { name: string } | null
 }
 
+type CommunicationRow = {
+  id: string
+  channel: CommunicationChannel
+  direction: CommunicationDirection
+  message: string
+  created_at: string
+}
+
+type DeliveryDeadlineRow = {
+  id: string
+  status: string
+  token_expires_at: string | null
+  download_expires_at: string | null
+  archived_at: string | null
+  clients: { name: string } | null
+}
+
 function emptyStatusCounts(): DeliveryStatusCounts {
   return {
     pending: 0,
@@ -104,10 +149,17 @@ export function emptyDashboardData(): DashboardData {
     statusCounts: emptyStatusCounts(),
     recentActivity: [],
     recentClients: [],
+    notifications: { unread: 0, items: [] },
+    recentCommunications: [],
+    expiringLinks: [],
   }
 }
 
-export async function loadDashboardData(service: Db, role: RoleKey): Promise<DashboardData> {
+export async function loadDashboardData(
+  service: Db,
+  role: RoleKey,
+  userId: string | null,
+): Promise<DashboardData> {
   const statusQuery = service
     .from('deliveries')
     .select('status')
@@ -140,6 +192,22 @@ export async function loadDashboardData(service: Db, role: RoleKey): Promise<Das
     .select('id, name, project_code, shoot_date, shoot_time, status, clients ( name )')
     .returns<ProjectShootRow[]>()
 
+  const commQuery = service
+    .from('communications')
+    .select('id, channel, direction, message, created_at')
+    .order('created_at', { ascending: false })
+    .limit(RECENT_COMMUNICATIONS_LIMIT)
+    .returns<CommunicationRow[]>()
+
+  const deadlineQuery = service
+    .from('deliveries')
+    .select('id, status, token_expires_at, download_expires_at, archived_at, clients ( name )')
+    .neq('status', 'expired')
+    .is('archived_at', null)
+    .order('created_at', { ascending: false })
+    .limit(DEADLINE_SCAN_LIMIT)
+    .returns<DeliveryDeadlineRow[]>()
+
   // Team size is owner-only data and is only queried for owners.
   const teamCountPromise: PromiseLike<{ count: number | null }> =
     role === 'owner'
@@ -149,7 +217,13 @@ export async function loadDashboardData(service: Db, role: RoleKey): Promise<Das
           .then((res) => ({ count: res.count }))
       : Promise.resolve({ count: null })
 
-  const [statusRes, clientsRes, activityRes, recentClientsRes, projectsRes, projectsListRes, teamRes] =
+  // The notifications widget is scoped to the signed-in user (like the bell).
+  const notificationsPromise =
+    userId && service
+      ? listNotifications(service, userId, RECENT_NOTIFICATIONS_LIMIT)
+      : Promise.resolve({ unread: 0, items: [] })
+
+  const [statusRes, clientsRes, activityRes, recentClientsRes, projectsRes, projectsListRes, teamRes, commRes, deadlineRes, notifications] =
     await Promise.all([
       statusQuery,
       clientsCountQuery,
@@ -158,6 +232,9 @@ export async function loadDashboardData(service: Db, role: RoleKey): Promise<Das
       projectsQuery,
       projectsListQuery,
       teamCountPromise,
+      commQuery,
+      deadlineQuery,
+      notificationsPromise,
     ])
 
   const statusCounts = emptyStatusCounts()
@@ -193,6 +270,34 @@ export async function loadDashboardData(service: Db, role: RoleKey): Promise<Das
       shootTime: row.shoot_time,
     }))
 
+  const recentCommunications: DashboardCommunication[] = (commRes.data ?? []).map((row) => ({
+    id: row.id,
+    channel: row.channel,
+    direction: row.direction,
+    message: row.message,
+    createdAt: row.created_at,
+  }))
+
+  // Expiring-soon links: any usable (non-expired, non-archived) delivery whose
+  // private-link expiry OR active 3-day download window ends within 72h.
+  const now = Date.now()
+  const expiringLinks: DashboardExpiringLink[] = []
+  for (const row of deadlineRes.data ?? []) {
+    if (row.token_expires_at) {
+      const remaining = new Date(row.token_expires_at).getTime() - now
+      if (remaining > 0 && remaining <= EXPIRING_WINDOW_MS) {
+        expiringLinks.push({ id: row.id, clientName: row.clients?.name ?? null, trigger: 'link', expiresAt: row.token_expires_at })
+      }
+    }
+    if (row.download_expires_at && row.status !== 'downloaded') {
+      const remaining = new Date(row.download_expires_at).getTime() - now
+      if (remaining > 0 && remaining <= EXPIRING_WINDOW_MS) {
+        expiringLinks.push({ id: row.id, clientName: row.clients?.name ?? null, trigger: 'download', expiresAt: row.download_expires_at })
+      }
+    }
+  }
+  expiringLinks.sort((a, b) => new Date(a.expiresAt).getTime() - new Date(b.expiresAt).getTime())
+
   return {
     clientsCount: clientsRes.count ?? 0,
     deliveriesCount,
@@ -202,6 +307,9 @@ export async function loadDashboardData(service: Db, role: RoleKey): Promise<Das
     statusCounts,
     recentActivity,
     recentClients,
+    notifications,
+    recentCommunications,
+    expiringLinks,
   }
 }
 

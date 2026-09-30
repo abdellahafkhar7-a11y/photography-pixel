@@ -1,5 +1,5 @@
 import type { AppUserRow } from './types'
-import type { DeliveryMode, DeliverySourceType, DeliveryStatus, DeliveryVideosRow } from '../../_lib/db-types'
+import type { CommunicationChannel, CommunicationDirection, CommunicationsRow, DeliveryMode, DeliverySourceType, DeliveryStatus, DeliveryVideosRow } from '../../_lib/db-types'
 import { COPY_SCRIPT } from '../../_lib/brand'
 import { MAX_UPLOAD_BYTES, UPLOAD_PART_SIZE } from '../../_lib/r2'
 import {
@@ -13,7 +13,7 @@ import type {
   DeliveryListItem,
   PortfolioOption,
 } from '../deliveries/_helpers'
-import { ACTIVITY_LABEL, activeVideoCount } from '../deliveries/_helpers'
+import { ACTIVITY_LABEL, activeVideoCount, deliveryClientName } from '../deliveries/_helpers'
 
 //============================================================================
 // Phase 4C — Client Delivery admin UI, rendered with the Phase 4A/4B shell.
@@ -131,12 +131,11 @@ function clientFilterOptions(clients: { id: string; name: string; whatsapp_numbe
 
 function listRow(item: DeliveryListItem): string {
   const client = item.clients
+  // Phase 5A — a name-only delivery (mobile flow) shows the typed name instead
+  // of the generic "portfolio video" placeholder.
   const clientName =
-    client && client.name.trim().length > 0
-      ? client.name.trim()
-      : item.source_type === 'portfolio'
-        ? 'فيديو من المعرض العام'
-        : 'فيديو خاص'
+    deliveryClientName(item) ||
+    (item.source_type === 'portfolio' ? 'فيديو من المعرض العام' : 'فيديو خاص')
   const whatsapp = client?.whatsapp_number ?? ''
   const active = item.delivery_videos.find((video) => video.is_active)
   const activeCount = activeVideoCount(item.delivery_videos)
@@ -202,7 +201,8 @@ export function renderDeliveryList(
     if (clientFilter && !item.clients) return false
     if (multiVersion && activeVideoCount(item.delivery_videos) < 2) return false
     if (!query) return true
-    const name = (item.clients?.name ?? '').toLowerCase()
+    // Phase 5A: name-only deliveries (mobile flow) are searchable by label too.
+    const name = deliveryClientName(item).toLowerCase()
     const whatsapp = item.clients?.whatsapp_number ?? ''
     const visibleId = item.client_visible_id ?? ''
     if (name.includes(query)) return true
@@ -437,6 +437,7 @@ export type DetailPageOptions = {
   notice?: string
   error?: string
   portfolio?: PortfolioOption[]
+  communications?: CommunicationsRow[]
 }
 
 function linkCard(base: string, token: string, identifier: string | null, whatsapp: string): string {
@@ -707,6 +708,51 @@ export function renderDeliveryDetail(
           )
           .join('')
 
+  const COMMUNICATION_CHANNEL_LABEL: Record<CommunicationChannel, string> = {
+    whatsapp: 'واتساب',
+    email: 'بريد',
+    internal: 'ملاحظة',
+    system: 'النظام',
+  }
+  const COMMUNICATION_DIRECTION_LABEL: Record<CommunicationDirection, string> = {
+    outbound: 'صادر',
+    inbound: 'وارد',
+    system: 'تلقائي',
+  }
+  const commRows =
+    !options.communications || options.communications.length === 0
+      ? `<tr><td colspan="3"><p class="muted" style="padding:.5rem 0">لا يوجد تواصل مسجّل بعد.</p></td></tr>`
+      : options.communications
+          .slice(0, 30)
+          .map(
+            (c) =>
+              `<tr>
+                <td><span class="badge st-preview_viewed">${COMMUNICATION_DIRECTION_LABEL[c.direction] ?? c.direction} · ${COMMUNICATION_CHANNEL_LABEL[c.channel] ?? c.channel}</span> ${escapeHtml(c.message)}</td>
+                <td>${escapeHtml(formatDateTime(c.created_at))}</td>
+              </tr>`,
+          )
+          .join('')
+  const commCard = `<div class="card">
+      <h2 class="form-card-title">سجل التواصل</h2>
+      <div class="table-wrap"><table class="tbl"><thead><tr><th>الرسالة</th><th>التاريخ</th></tr></thead><tbody>${commRows}</tbody></table></div>
+      ${isOwner ? `<form method="post" style="margin-top:.9rem" class="comm-note">
+        <input type="hidden" name="action" value="add_note">
+        <div class="comm-note-row">
+          <select name="direction" aria-label="الاتجاه">
+            <option value="outbound">صادر (إلى العميل)</option>
+            <option value="inbound">وارد (من العميل)</option>
+          </select>
+          <select name="channel" aria-label="القناة">
+            <option value="whatsapp">واتساب</option>
+            <option value="email">بريد</option>
+            <option value="internal">ملاحظة داخلية</option>
+          </select>
+          <input type="text" name="note" required minlength="2" maxlength="500" placeholder="سجّل رسالة تواصل (واتساب / بريد / ملاحظة)…">
+          <button class="btn btn-subtle" type="submit">${shellIcon('plus', 14)} تسجيل</button>
+        </div>
+      </form>` : ''}
+    </div>`
+
   const content = `
     <div class="page-head">
       <div>
@@ -723,7 +769,7 @@ export function renderDeliveryDetail(
     <div class="card">
       <h2 class="form-card-title">معلومات العميل</h2>
       <div class="stat-grid">
-        ${statCell('الاسم', escapeHtml(client?.name ?? '—'))}
+        ${statCell('الاسم', escapeHtml(deliveryClientName(detail) || '—'))}
         ${statCell('واتساب', `<span dir="ltr">${escapeHtml(whatsapp || '—')}</span>`)}
         ${statCell('تاريخ الإنشاء', escapeHtml(formatDateTime(detail.created_at)))}
         ${statCell('ملف العميل', client ? `<a class="btn btn-subtle" href="/admin/clients/${client.id}">${shellIcon('user', 15)} عرض الملف</a>` : escapeHtml('—'))}
@@ -763,6 +809,7 @@ export function renderDeliveryDetail(
       <h2 class="form-card-title">سجل النشاط</h2>
       <div class="table-wrap"><table class="tbl"><thead><tr><th>الحدث</th><th>التاريخ</th></tr></thead><tbody>${activityRows}</tbody></table></div>
     </div>
+    ${commCard}
     ${isOwner ? `<div class="card danger-zone">
       <h2 class="form-card-title">إدارة التوصيل</h2>
       ${archivedDelivery

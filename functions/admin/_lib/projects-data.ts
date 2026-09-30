@@ -15,6 +15,7 @@ import type {
   SlotStatus,
   TaskPriority,
   TaskStatus,
+  VideoRevisionsRow,
 } from '../../_lib/db-types'
 import type { DeliveryActivityRow } from '../../_lib/db-types'
 import { createSlotDelivery } from './clients-data'
@@ -119,6 +120,8 @@ export const PROJECT_ACTIVITY_LABEL: Record<string, string> = {
   task_deleted: 'تم حذف مهمة',
   project_archived: 'تمت أرشفة المشروع',
   project_unarchived: 'أُعيد تفعيل المشروع',
+  revision_requested: 'طُلب تعديل فيديو',
+  revision_approved: 'اعتُمدت نسخة جديدة',
 }
 
 //----------------------------------------------------------------------------
@@ -1402,6 +1405,7 @@ export type CardDetail = {
   tasks: ProjectTasksRow[]
   activity: ProjectActivityItem[]
   assignees: { id: string; name: string }[]
+  revisions: VideoRevisionsRow[]
 }
 
 export async function loadCardDetail(
@@ -1464,7 +1468,7 @@ export async function loadCardDetail(
     }
   }
 
-  const [clientRes, modelRes, tasksRes, assigneesRes] = await Promise.all([
+  const [clientRes, modelRes, tasksRes, assigneesRes, revisionsRes] = await Promise.all([
     project.client_id
       ? service.from('clients').select('id, name, whatsapp_number').eq('id', project.client_id).maybeSingle<{ id: string; name: string; whatsapp_number: string }>()
       : Promise.resolve({ data: null }),
@@ -1484,6 +1488,12 @@ export async function loadCardDetail(
       .eq('is_active', true)
       .order('full_name')
       .returns<{ id: string; full_name: string | null; email: string }[]>(),
+    service
+      .from('video_revisions')
+      .select('*')
+      .eq('client_video_slot_id', slotId)
+      .order('created_at', { ascending: false })
+      .returns<VideoRevisionsRow[]>(),
   ])
 
   // slot-scoped activity: project_activity rows carrying metadata.slot_id, plus
@@ -1522,6 +1532,7 @@ export async function loadCardDetail(
     tasks: tasksRes.data ?? [],
     activity,
     assignees: (assigneesRes.data ?? []).map((u) => ({ id: u.id, name: u.full_name ?? u.email })),
+    revisions: revisionsRes.data ?? [],
   }
 }
 

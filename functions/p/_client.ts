@@ -1,4 +1,5 @@
 import { recordActivity } from '../_lib/activities'
+import { recordCommunication } from '../_lib/communications'
 import type { ClientsRow, DeliveriesRow, DeliveryVideosRow, DeliveryVideosUpdate } from '../_lib/db-types'
 import { siteUrl, type DeliveryEnv } from '../_lib/env'
 import { createServiceClient, type Db } from '../_lib/supabase'
@@ -64,6 +65,34 @@ export async function resolvePrivateDelivery(
   return { kind: 'ok', data: { delivery: data, client: data.clients, video, videos, identifier } }
 }
 
+/**
+ * Phase 5A mobile Coordinator link. Marked purely from stored columns so no
+ * migration or new column is needed: a client-less delivery that carries a
+ * coordinator-typed name, is view-only, and has a hard link lifetime.
+ *
+ * These links get the simple viewing page: no download, and no "confirm the
+ * videos" handshake (that stays for the classic admin/client flow).
+ */
+export function isCoordinatorMobileLink(delivery: DeliveriesRow): boolean {
+  return (
+    delivery.client_id === null &&
+    typeof delivery.client_label === 'string' &&
+    delivery.client_label.trim().length > 0 &&
+    delivery.delivery_mode === 'VIEW_ONLY' &&
+    typeof delivery.token_expires_at === 'string'
+  )
+}
+
+/** Name typed by the coordinator in the mobile flow, else the real client. */
+export function privateDeliveryClientName(
+  delivery: DeliveriesRow,
+  client: ClientsRow | null,
+): string {
+  const fromClient = client && typeof client.name === 'string' ? client.name.trim() : ''
+  if (fromClient) return fromClient
+  return typeof delivery.client_label === 'string' ? delivery.client_label.trim() : ''
+}
+
 export function tokenIsActive(delivery: DeliveriesRow, now = Date.now()): boolean {
   if (!delivery.token_expires_at) return true
   return new Date(delivery.token_expires_at).getTime() > now
@@ -83,6 +112,13 @@ export function isExpired(delivery: DeliveriesRow): boolean {
 
 export async function trackLinkOpen(service: Db, deliveryId: string): Promise<void> {
   await recordActivity(service, deliveryId, 'link_opened')
+  await recordCommunication(service, {
+    channel: 'system',
+    direction: 'inbound',
+    entity_type: 'delivery',
+    entity_id: deliveryId,
+    message: 'فتح العميل رابط الفيديو الخاص.',
+  })
 }
 
 // First open of a valid link moves pending -> preview_viewed (guarded, so a
@@ -95,7 +131,16 @@ export async function markPreviewViewed(service: Db, deliveryId: string): Promis
     .eq('status', 'pending')
     .select('id')
     .maybeSingle<{ id: string }>()
-  if (data) await recordActivity(service, deliveryId, 'preview_viewed')
+  if (data) {
+    await recordActivity(service, deliveryId, 'preview_viewed')
+    await recordCommunication(service, {
+      channel: 'system',
+      direction: 'inbound',
+      entity_type: 'delivery',
+      entity_id: deliveryId,
+      message: 'عرض العميل معاينة الفيديوهات الخاصة.',
+    })
+  }
 }
 
 export type ConfirmResult = 'confirmed' | 'already' | 'expired' | 'error'
@@ -130,6 +175,13 @@ export async function confirmDelivery(service: Db, deliveryId: string): Promise<
   if (claimed) {
     await setActiveVersionColumn(service, deliveryId, 'confirmed_at', now)
     await recordActivity(service, deliveryId, 'video_confirmed')
+    await recordCommunication(service, {
+      channel: 'system',
+      direction: 'inbound',
+      entity_type: 'delivery',
+      entity_id: deliveryId,
+      message: 'أكّد العميل استلام الفيديوهات.',
+    })
     return 'confirmed'
   }
   const { data: current } = await service
@@ -162,6 +214,13 @@ export async function expireDeliveryIfDue(
   if (data) {
     await setActiveVersionColumn(service, deliveryId, 'expired_at', nowIso)
     await recordActivity(service, deliveryId, 'delivery_expired', { auto: true })
+    await recordCommunication(service, {
+      channel: 'system',
+      direction: 'system',
+      entity_type: 'delivery',
+      entity_id: deliveryId,
+      message: 'انتهت مهلة تحميل الفيديوهات تلقائياً.',
+    })
   }
 }
 
@@ -217,6 +276,13 @@ export async function gateDownload(
   }
 
   await recordActivity(service, delivery.id, 'download_started', { isFirst })
+  await recordCommunication(service, {
+    channel: 'system',
+    direction: 'inbound',
+    entity_type: 'delivery',
+    entity_id: delivery.id,
+    message: isFirst ? 'بدأ العميل تنزيل الفيديو (فتُح البرنامج لمدة 3 أيام).' : 'بدء تنزيل إضافي من العميل.',
+  })
   return { ok: true, isFirst }
 }
 
@@ -276,17 +342,17 @@ export function renderInvalidOrExpiredLinkPage(env: DeliveryEnv, request: Reques
   const base = siteUrl(env, request)
   const wa = clientContactWaLink(SITE_WHATSAPP)
   const page = brandPage(
-    'الرابط غير صالح',
+    'انتهت صلاحية الرابط',
     `<div class="hero">
        <span class="logo">${brandLogo(30)}<span>Photography Pixel</span></span>
        <div class="sub">تسليم الفيديو</div>
      </div>
      <div class="client-body">
        <div class="card">
-         <h1>الرابط غير صالح أو انتهت صلاحيته</h1>
-         <p class="muted" style="margin-top:.5rem">هذا الرابط غير صالح أو تم استبداله. إذا كنت تواجه مشكلة في فتح الرابط، تواصل معنا مباشرة عبر واتساب.</p>
+         <h1>انتهت صلاحية هذا الرابط</h1>
+         <p class="muted" style="margin-top:.5rem">الرابط للعرض فقط لمدة 24 ساعة من إنشائه، أو تم استبداله. تواصل معنا لإعادة فتح الرابط.</p>
          <div class="actionbar">
-           <a class="btn btn-success" href="${escapeHtml(wa)}" target="_blank" rel="noreferrer noopener">${icon('whatsapp')} تواصل عبر واتساب</a>
+           <a class="btn btn-success" href="${escapeHtml(wa)}" target="_blank" rel="noreferrer noopener">${icon('whatsapp')} تواصل معنا لإعادة فتح الرابط</a>
            <a class="btn btn-subtle" href="${escapeHtml(base)}">${icon('arrowLeft')} زيارة الموقع</a>
          </div>
        </div>
@@ -328,6 +394,10 @@ export function renderPrivatePage(
 
   const expired = isExpired(delivery)
   const viewOnly = delivery.delivery_mode === 'VIEW_ONLY'
+  // Phase 5A mobile links are a pure viewing experience: no originals and no
+  // client-side "confirm" handshake. The classic admin/client flow is
+  // untouched and keeps its confirm → release → download behaviour.
+  const mobileLink = isCoordinatorMobileLink(delivery)
   // confirmed = the client confirmed but the owner has NOT released the
   // originals yet (locked). canDownload = the owner released them (or the
   // client already downloaded) and the shared window is running. VIEW_ONLY
@@ -344,11 +414,11 @@ export function renderPrivatePage(
   } else if (items.length === 0) {
     media = `<p class="muted">لا يوجد فيديو لعرضه حالياً.</p>`
   } else {
-    media = items
+    const renderedItems = items
       .map((item, index) => {
         const number = index + 1
         const heading = items.length > 1
-          ? `<div class="video-item-head"><span class="video-item-n">${number}</span><span>الفيديو ${number}</span></div>`
+          ? `<div class="video-item-head"><span class="video-item-n">${number}</span><span>الفيديو ${number}</span>${item.version > 1 ? `<span class="pill video-item-pill">النسخة ${item.version}</span>` : ''}</div>`
           : ''
         const body =
           item.source_type === 'portfolio'
@@ -359,25 +429,36 @@ export function renderPrivatePage(
         return `<div class="video-item">${heading}${body}</div>`
       })
       .join('')
+    // 9:16 tiles sit in a 2-column grid on desktop, single column on phones.
+    media = items.length > 1 ? `<div class="video-grid">${renderedItems}</div>` : renderedItems
     media += `<script>(function(){var fr=document.querySelectorAll('.video-frame'),vd=document.querySelectorAll('.video-frame video');function block(e){e.preventDefault();return false}function esc(){for(var i=0;i<vd.length;i++){var el=vd[i];if(document.fullscreenElement===el||document.webkitFullscreenElement===el){var x=document.exitFullscreen||document.webkitExitFullscreen;if(x)x.call(document)}}}for(var j=0;j<fr.length;j++){fr[j].addEventListener('contextmenu',block,true);fr[j].addEventListener('dragstart',block,true)}for(var k=0;k<vd.length;k++){vd[k].setAttribute('draggable','false');vd[k].addEventListener('enterpictureinpicture',block,true)}document.addEventListener('fullscreenchange',esc);document.addEventListener('webkitfullscreenchange',esc)})();<\/script>`
   }
 
   let notice = ''
   if (expired) {
-    notice = `<div class="alert error">انتهت صلاحية تحميل هذه الفيديوهات.</div>`
+    notice = `<div class="alert error">انتهت صلاحية هذا الرابط — تواصل معنا لإعادة فتحه.</div>`
+  } else if (mobileLink) {
+    notice = `<div class="alert info">${icon('clock')} هذا الرابط للعرض فقط، ويتوقف تلقائياً بعد 24 ساعة من إنشائه.</div>`
   } else if (canDownload) {
     notice = `<div class="alert success">${icon('check')} التحميل متاح — يمكنك الآن الحصول على الجودة الأصلية.</div>`
     if (delivery.download_expires_at) {
-      notice += `<div class="alert info">${icon('clock')} التحميل متاح حتى ${escapeHtml(formatDateTime(delivery.download_expires_at))}. بعدها يُحذف الملف الأصلي تلقائياً.</div>`
+      notice += `<div class="alert info">${icon('clock')} <span class="countdown" data-expires="${escapeHtml(delivery.download_expires_at)}">التحميل متاح حتى ${escapeHtml(formatDateTime(delivery.download_expires_at))}</span></div>`
     }
   } else if (locked) {
     notice = viewOnly
       ? `<div class="alert success">تم تأكيد الفيديوهات بنجاح — هذا الرابط للعرض فقط.</div>`
-      : `<div class="alert success">تم تأكيد الفيديوهات بنجاح — النسخ الأصلية ستكون متاحة بعد إطلاق التحميل.</div>`
+      : `<div class="alert success">تم تأكيد الفيديوهات بنجاح — في انتظار إطلاق التحميل من فريق Photography Pixel.</div>`
+  } else {
+    notice = `<div class="confirm-note"><b>الفيديوهات جاهزة للمراجعة.</b> شاهد الفيديوهات ثم اضغط «أؤكد الفيديوهات» عند الانتهاء.</div>`
   }
   if (options.confirmError) {
     notice += `<div class="alert error">${escapeHtml(options.confirmError)}</div>`
   }
+
+  // Live countdown for the link lifetime and the download window (purely
+  // presentational — the real expiry gates stay server-side on /download,
+  // /preview, /thumb and the /p page itself).
+  const countdownScript = `<script>(function(){function fmt(ms){if(ms<=0)return null;var s=Math.floor(ms/1000),d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),sec=s%60;if(d>0)return d+' يوم '+(h>0?h+' س ':'')+m+' د';if(h>0)return h+' س '+m+' د';return m+' د '+sec+' ث'}var dl=document.querySelector('[data-expires]');if(dl){function tickDl(){var end=Date.parse(dl.getAttribute('data-expires'));if(isNaN(end))return;var r=fmt(end-Date.now());if(r){dl.textContent=r+' قبل انتهاء التحميل'}else{dl.textContent='انتهى وقت التحميل — تواصل معنا عبر واتساب';var a=dl.closest('.alert');if(a)a.className='alert error'}}tickDl();setInterval(tickDl,1000)}var lk=document.querySelector('[data-link-expires]');if(lk){function tickLk(){var end=Date.parse(lk.getAttribute('data-link-expires'));if(isNaN(end))return;var r=fmt(end-Date.now());if(r){lk.textContent='يتبقى '+r}else{lk.textContent='انتهت صلاحية الرابط'}};tickLk();setInterval(tickLk,1000)}})();<\/script>`
 
   const downloadForItem = (item: DeliveryVideosRow, number: number): string => {
     const label = items.length > 1 ? `تحميل الفيديو ${number}` : 'تحميل الفيديو الأصلي'
@@ -390,6 +471,10 @@ export function renderPrivatePage(
   let actions = ''
   if (expired) {
     actions = `<a class="btn btn-success block" href="${escapeHtml(clientContactWaLink(SITE_WHATSAPP))}" target="_blank" rel="noreferrer noopener">${icon('whatsapp')} تواصل عبر واتساب</a>`
+  } else if (mobileLink) {
+    // No confirm button and no download button — the mobile workflow never asks
+    // the client to do anything but watch.
+    actions = `<p class="hint" style="text-align:center;margin-top:.2rem">${icon('eye', 16)} هذه الفيديوهات محفوظة لك — استمتع بالمشاهدة</p>`
   } else if (canDownload) {
     actions = items
       .map((item, index) => downloadForItem(item, index + 1))
@@ -402,13 +487,22 @@ export function renderPrivatePage(
     actions = `<form method="post" action="${escapeHtml(pageUrl)}" style="width:100%"><button type="submit" class="btn btn-primary block">${icon('check')} أؤكد الفيديوهات</button></form>`
   }
 
-  const clientName = client && client.name.trim().length > 0 ? client.name.trim() : ''
+  const clientName = privateDeliveryClientName(delivery, client)
   const heroSub = clientName ? `تسليم فيديو خاص · ${clientName}` : 'تسليم فيديو خاص'
   const statExpiry = viewOnly
     ? '—'
     : delivery.download_expires_at
       ? formatDateTime(delivery.download_expires_at)
       : '—'
+  // Remaining link validity is presentational; /p, /preview, /thumb and
+  // /download all reject an expired token server-side.
+  const linkExpiry = delivery.token_expires_at
+    ? `<div class="stat-cell"><div class="label">ينتهي الرابط في</div><div class="value"><span class="countdown" data-link-expires="${escapeHtml(delivery.token_expires_at)}">${escapeHtml(formatDateTime(delivery.token_expires_at))}</span></div></div>`
+    : ''
+  // A mobile link is never "waiting" for anything — it is simply ready to watch.
+  const statusBadge = mobileLink && delivery.status !== 'expired'
+    ? '<span class="badge st-preview_viewed">جاهز للمشاهدة</span>'
+    : statusBadgeHtml(delivery.status)
 
   return brandPage(
     'فيديو خاص',
@@ -418,25 +512,25 @@ export function renderPrivatePage(
      </div>
      <div class="client-body">
        <div class="card">
-         <div class="between"><h1>فيديو خاص</h1>${statusBadgeHtml(delivery.status)}</div>
+         <div class="between"><h1>${mobileLink ? 'هذا هو الفيديو الخاص بك' : 'فيديو خاص'}</h1>${statusBadge}</div>
          <p class="muted" style="margin-top:.3rem">${sourcePillHtml(delivery.source_type)}</p>
          <div style="height:1rem"></div>
          ${media}
          ${notice}
          <div class="stat-grid">
-           <div class="stat-cell"><div class="label">الحالة</div><div class="value">${statusBadgeHtml(delivery.status)}</div></div>
+           <div class="stat-cell"><div class="label">الحالة</div><div class="value">${statusBadge}</div></div>
            <div class="stat-cell"><div class="label">عدد الفيديوهات</div><div class="value">${items.length === 0 ? '—' : String(items.length)}</div></div>
            <div class="stat-cell"><div class="label">تاريخ الإنشاء</div><div class="value">${formatDateTime(delivery.created_at)}</div></div>
-           <div class="stat-cell"><div class="label">آخر موعد للتحميل</div><div class="value">${expired ? '—' : escapeHtml(statExpiry)}</div></div>
+           ${linkExpiry || `<div class="stat-cell"><div class="label">آخر موعد للتحميل</div><div class="value">${expired ? '—' : escapeHtml(statExpiry)}</div></div>`}
          </div>
          <div class="actionbar" style="margin-top:1.4rem">${actions}</div>
-         ${!expired && (locked || canDownload) ? `<p class="hint" style="margin-top:1rem">${icon('lock', 16)} الرابط مخصص لك — لا تشاركه مع أي شخص.</p>` : ''}
+         ${!expired && (mobileLink || locked || canDownload) ? `<p class="hint" style="margin-top:1rem">${icon('lock', 16)} الرابط مخصص لك — لا تشاركه مع أي شخص.</p>` : ''}
        </div>
        <div class="card">
          <div class="wa-row">${icon('whatsapp')} <span>هل لديك استفسار؟ يمكنك التواصل معنا مباشرة.</span></div>
          <div class="actionbar"><a class="btn btn-outline" href="${escapeHtml(clientContactWaLink(SITE_WHATSAPP))}" target="_blank" rel="noreferrer noopener">${icon('whatsapp')} فتح واتساب</a></div>
        </div>
-     </div>${COPY_SCRIPT}`,
+     </div>${countdownScript}${COPY_SCRIPT}`,
   )
 }
 

@@ -172,6 +172,7 @@ export type ClientVideoSlotsRow = {
   project_id: string | null
   kanban_status: KanbanStatus
   kanban_order: number
+  revision_version: number
   notes: string | null
   label: string | null
   deadline: string | null
@@ -188,6 +189,7 @@ export type ClientVideoSlotsInsert = {
   project_id?: string | null
   kanban_status?: KanbanStatus
   kanban_order?: number
+  revision_version?: number
   notes?: string | null
   label?: string | null
   deadline?: string | null
@@ -201,6 +203,7 @@ export type ClientVideoSlotsUpdate = {
   project_id?: string | null
   kanban_status?: KanbanStatus
   kanban_order?: number
+  revision_version?: number
   notes?: string | null
   label?: string | null
   deadline?: string | null
@@ -224,6 +227,10 @@ export type DeliveriesRow = {
   client_visible_id: string | null
   archived_at: string | null
   client_video_slot_id: string | null
+  // Phase 5A — the client name typed by a coordinator in the mobile Team
+  // Workspace (WhatsApp is never required there). Used only when no real
+  // client row is attached to the delivery.
+  client_label: string | null
   created_at: string
   updated_at: string
 }
@@ -245,6 +252,7 @@ export type DeliveriesInsert = {
   client_visible_id?: string | null
   archived_at?: string | null
   client_video_slot_id?: string | null
+  client_label?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -263,6 +271,7 @@ export type DeliveriesUpdate = {
   client_visible_id?: string | null
   archived_at?: string | null
   client_video_slot_id?: string | null
+  client_label?: string | null
   updated_at?: string
 }
 
@@ -469,6 +478,118 @@ export type ProjectActivityInsert = {
   created_at?: string
 }
 
+//--------------------------------------------------------------------------
+// Phase 4R — intelligence layer
+//--------------------------------------------------------------------------
+
+export type RevisionStatus = 'none' | 'requested' | 'in_progress' | 'pending_review' | 'approved'
+
+export type NotificationType =
+  | 'project_created'
+  | 'project_due_soon'
+  | 'project_overdue'
+  | 'project_completed'
+  | 'task_assigned'
+  | 'task_due_soon'
+  | 'task_overdue'
+  | 'video_needs_review'
+  | 'video_ready'
+  | 'client_confirmed_delivery'
+  | 'delivery_released'
+  | 'delivery_downloaded'
+  | 'delivery_expiring'
+  | 'delivery_expired'
+  | 'revision_requested'
+  | 'revision_completed'
+  | 'system'
+
+export type NotificationsRow = {
+  id: string
+  user_id: string
+  type: NotificationType
+  title: string
+  message: string
+  entity_type: string
+  entity_id: string | null
+  dedupe_key: string | null
+  read_at: string | null
+  created_at: string
+}
+
+export type NotificationsInsert = {
+  id?: string
+  user_id: string
+  type: NotificationType
+  title: string
+  message?: string
+  entity_type?: string
+  entity_id?: string | null
+  dedupe_key?: string | null
+  read_at?: string | null
+  created_at?: string
+}
+
+export type VideoRevisionsRow = {
+  id: string
+  client_video_slot_id: string
+  project_id: string
+  version: number
+  status: RevisionStatus
+  reason: string
+  notes: string | null
+  created_by: string | null
+  requested_at: string
+  resolved_at: string | null
+  created_at: string
+}
+
+export type VideoRevisionsInsert = {
+  id?: string
+  client_video_slot_id: string
+  project_id: string
+  version: number
+  status?: RevisionStatus
+  reason?: string
+  notes?: string | null
+  created_by?: string | null
+  requested_at?: string
+  resolved_at?: string | null
+  created_at?: string
+}
+
+export type VideoRevisionsUpdate = {
+  status?: RevisionStatus
+  reason?: string
+  notes?: string | null
+  resolved_at?: string | null
+}
+
+export type CommunicationChannel = 'whatsapp' | 'email' | 'internal' | 'system'
+export type CommunicationDirection = 'outbound' | 'inbound' | 'system'
+export type CommunicationEntityType = 'client' | 'project' | 'delivery' | 'model' | 'task'
+
+export type CommunicationsRow = {
+  id: string
+  channel: CommunicationChannel
+  direction: CommunicationDirection
+  entity_type: CommunicationEntityType
+  entity_id: string | null
+  message: string
+  user_id: string | null
+  created_at: string
+}
+
+export type CommunicationsInsert = {
+  id?: string
+  channel: CommunicationChannel
+  direction: CommunicationDirection
+  entity_type: CommunicationEntityType
+  entity_id?: string | null
+  message?: string
+  user_id?: string | null
+  created_at?: string
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -638,6 +759,49 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: NotificationsRow
+        Insert: NotificationsInsert
+        Update: {
+          read_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'notifications_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'app_users'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      video_revisions: {
+        Row: VideoRevisionsRow
+        Insert: VideoRevisionsInsert
+        Update: VideoRevisionsUpdate
+        Relationships: [
+          {
+            foreignKeyName: 'video_revisions_client_video_slot_id_fkey'
+            columns: ['client_video_slot_id']
+            isOneToOne: false
+            referencedRelation: 'client_video_slots'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'video_revisions_project_id_fkey'
+            columns: ['project_id']
+            isOneToOne: false
+            referencedRelation: 'projects'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      communications: {
+        Row: CommunicationsRow
+        Insert: CommunicationsInsert
+        Update: never
+        Relationships: []
+      }
     }
     Views: Record<never, never>
     Functions: Record<never, never>
@@ -653,6 +817,7 @@ export type Database = {
       task_status: TaskStatus
       task_priority: TaskPriority
       payment_status: PaymentStatus
+      revision_status: RevisionStatus
     }
     CompositeTypes: Record<never, never>
   }

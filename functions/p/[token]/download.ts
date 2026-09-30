@@ -1,5 +1,5 @@
 import type { PagesFunction } from '@cloudflare/workers-types'
-import { siteUrl, type DeliveryEnv } from '../../_lib/env'
+import { shareBaseUrl, type DeliveryEnv } from '../../_lib/env'
 import { createServiceClient } from '../../_lib/supabase'
 import { isValidTokenFormat, splitStableToken } from '../../_lib/tokens'
 import {
@@ -18,7 +18,7 @@ type Route = PagesFunction<DeliveryEnv, 'token', Record<string, unknown>>
 // parameter selects one video inside a multi-video delivery.
 export const onRequestGet: Route = async (context) => {
   const token = String((context.params as { token: string }).token)
-  const base = siteUrl(context.env, context.request)
+  const base = shareBaseUrl(context.env, context.request)
   const pageUrl = buildPrivateUrl(base, token)
   if (!isValidTokenFormat(splitStableToken(token).secret)) return Response.redirect(pageUrl, 302)
 

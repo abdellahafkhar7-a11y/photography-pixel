@@ -25,6 +25,29 @@ export function siteUrl(env: DeliveryEnv, request?: Request): string {
   return 'http://localhost:8788'
 }
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '0.0.0.0'])
+
+/**
+ * Origin for links that get handed to somebody else (client share links).
+ *
+ * A link copied from a phone must work on the CLIENT's device, so the host the
+ * coordinator is actually on has to win over SITE_URL. SITE_URL is routinely a
+ * loopback/dev value (http://localhost:8788), and a link built from it is dead
+ * the moment it leaves the machine that created it. On a real deployment the
+ * request origin already equals SITE_URL, so this changes nothing in production.
+ */
+export function shareBaseUrl(env: DeliveryEnv, request?: Request): string {
+  if (request) {
+    try {
+      const { origin, hostname } = new URL(request.url)
+      if (!LOOPBACK_HOSTS.has(hostname)) return origin
+    } catch {
+      // Malformed request URL — fall back to the configured site URL.
+    }
+  }
+  return siteUrl(env, request)
+}
+
 export function hasR2Bucket(env: DeliveryEnv): env is DeliveryEnv & { BUCKET: R2Bucket } {
   return Boolean(env.BUCKET)
 }
