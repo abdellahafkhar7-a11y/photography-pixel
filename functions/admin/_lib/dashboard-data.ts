@@ -160,9 +160,12 @@ export async function loadDashboardData(
   role: RoleKey,
   userId: string | null,
 ): Promise<DashboardData> {
+  // Owner dashboard statistics count CLIENT DELIVERIES only. A Coordinator
+  // temporary share is a different workflow and must never inflate them.
   const statusQuery = service
     .from('deliveries')
     .select('status')
+    .eq('share_kind', 'client_delivery')
     .returns<{ status: DeliveryStatus }[]>()
 
   const clientsCountQuery = service
@@ -202,6 +205,7 @@ export async function loadDashboardData(
   const deadlineQuery = service
     .from('deliveries')
     .select('id, status, token_expires_at, download_expires_at, archived_at, clients ( name )')
+    .eq('share_kind', 'client_delivery')
     .neq('status', 'expired')
     .is('archived_at', null)
     .order('created_at', { ascending: false })

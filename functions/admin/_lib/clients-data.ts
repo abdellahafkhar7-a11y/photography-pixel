@@ -1,4 +1,5 @@
 import type { Db } from '../../_lib/supabase'
+import type { DeliveryEnv } from '../../_lib/env'
 import type {
   ClientsRow,
   ClientStatus,
@@ -116,6 +117,9 @@ export async function listClients(
     service
       .from('deliveries')
       .select('id, client_id, status, created_at')
+      // Client rows count CLIENT DELIVERIES only. A Coordinator temporary
+      // share has no client at all, and must never be counted as one.
+      .eq('share_kind', 'client_delivery')
       .returns<{ id: string; client_id: string | null; status: DeliveryStatus; created_at: string }[]>(),
     service
       .from('client_video_slots')
@@ -219,6 +223,10 @@ export async function loadClientDetail(
         'id, source_type, status, delivery_mode, client_visible_id, archived_at, created_at, confirmed_at, downloaded_at, download_expires_at, expired_at, client_video_slot_id',
       )
       .eq('client_id', clientId)
+      // Defensive: the client_id predicate already excludes temporary shares
+      // (they are forced to NULL), but the workflow is stated explicitly so a
+      // future bug cannot surface a Coordinator share inside a client page.
+      .eq('share_kind', 'client_delivery')
       .order('created_at', { ascending: false })
       .returns<ClientDelivery[]>(),
     service
@@ -505,6 +513,180 @@ export async function setClientStatus(
     .single<ClientsRow>()
   if (error || !data) return { ok: false, error: 'تعذّر تحديث حالة العميل.' }
   return { ok: true, client: data }
+}
+
+//----------------------------------------------------------------------------
+// Owner-only client deletion
+//
+// This is deliberately NOT a blind cascade. Deleting a client row would
+// silently take real CRM data with it, so the impact is inspected first and the
+// delete is refused whenever the client is still connected to something the
+// owner would lose:
+//
+//   * projects / payments / CRM data  -> refuse, archive instead
+//   * video slots (and their revision history) -> refuse, they cascade
+//   * client deliveries               -> counted, and deleted only for the
+//                                         OWNER workflow (share_kind)
+//   * coordinator temporary shares    -> NEVER touched (no client_id, and the
+//                                         share_kind filter excludes them even
+//                                         if that ever changes)
+//   * public portfolio videos         -> never touched; a portfolio-backed
+//                                         delivery has no R2 object at all
+//----------------------------------------------------------------------------
+
+export type ClientDeleteImpact = {
+  projects: number
+  slots: number
+  deliveries: number
+  videos: number
+  r2Keys: string[]
+}
+
+export type ClientDeleteResult =
+  | { ok: true; clientId: string; deletedDeliveries: number; deletedVideos: number; deletedR2Keys: number }
+  | { ok: false; reason: 'has_projects' | 'has_slots' | 'not_found' | 'failed'; error: string; impact?: ClientDeleteImpact }
+
+/** Inspects everything a delete would affect, without changing anything. */
+export async function inspectClientDeletion(
+  service: Db,
+  clientId: string,
+): Promise<ClientDeleteImpact | null> {
+  const client = await service.from('clients').select('id').eq('id', clientId).maybeSingle<{ id: string }>()
+  if (!client.data) return null
+
+  const [projects, slots, deliveries] = await Promise.all([
+    service.from('projects').select('id').eq('client_id', clientId).returns<{ id: string }[]>(),
+    service
+      .from('client_video_slots')
+      .select('id')
+      .eq('client_id', clientId)
+      .returns<{ id: string }[]>(),
+    // share_kind is the guard that keeps the two workflows apart: an Owner
+    // Client Delivery is deletable, a Coordinator temporary share never is.
+    service
+      .from('deliveries')
+      .select('id')
+      .eq('client_id', clientId)
+      .eq('share_kind', 'client_delivery')
+      .returns<{ id: string }[]>(),
+  ])
+
+  const deliveryIds = (deliveries.data ?? []).map((d) => d.id)
+  let videos = 0
+  const r2Keys: string[] = []
+  if (deliveryIds.length > 0) {
+    const videosRes = await service
+      .from('delivery_videos')
+      .select('id, r2_original_key, source_type')
+      .in('delivery_id', deliveryIds)
+      .returns<{ id: string; r2_original_key: string | null; source_type: string | null }[]>()
+    for (const row of videosRes.data ?? []) {
+      videos += 1
+      // Only a private R2 original is ever a deletion candidate. A portfolio
+      // video references a PUBLIC CDN url and must never be touched.
+      if (row.source_type === 'r2' && row.r2_original_key) r2Keys.push(row.r2_original_key)
+    }
+  }
+
+  return {
+    projects: projects.data?.length ?? 0,
+    slots: slots.data?.length ?? 0,
+    deliveries: deliveryIds.length,
+    videos,
+    r2Keys,
+  }
+}
+
+export async function deleteClient(
+  service: Db,
+  env: DeliveryEnv,
+  clientId: string,
+): Promise<ClientDeleteResult> {
+  const impact = await inspectClientDeletion(service, clientId)
+  if (!impact) return { ok: false, reason: 'not_found', error: 'العميل غير موجود.' }
+
+  // Refuse rather than cascade: projects carry the CRM/payment record.
+  if (impact.projects > 0) {
+    return {
+      ok: false,
+      reason: 'has_projects',
+      impact,
+      error: `هذا العميل مرتبط بـ ${impact.projects} مشروع في سجل الأعمال، وحذفه سيمسح بيانات المشاريع والدفعات. استخدم «أرشفة» بدل الحذف.`,
+    }
+  }
+  // Video slots cascade into video revisions; keep that history intact.
+  if (impact.slots > 0) {
+    return {
+      ok: false,
+      reason: 'has_slots',
+      impact,
+      error: `هذا العميل مرتبط بـ ${impact.slots} مساحة فيديو (مع كل نسخها السابقة)، وحذفه سيمسحها. استخدم «أرشفة» بدل الحذف.`,
+    }
+  }
+
+  const deliveryIds = (
+    (
+      await service
+        .from('deliveries')
+        .select('id')
+        .eq('client_id', clientId)
+        .eq('share_kind', 'client_delivery')
+        .returns<{ id: string }[]>()
+    ).data ?? []
+  ).map((row) => row.id)
+
+  let deletedVideos = 0
+  if (deliveryIds.length > 0) {
+    // Videos and activity go first so the audit trail is removed with the
+    // delivery rather than left dangling.
+    await service.from('delivery_activity').delete().in('delivery_id', deliveryIds)
+    const videoRows = await service
+      .from('delivery_videos')
+      .select('id')
+      .in('delivery_id', deliveryIds)
+      .returns<{ id: string }[]>()
+    await service.from('delivery_videos').delete().in('delivery_id', deliveryIds)
+    deletedVideos = videoRows.data?.length ?? 0
+
+    const { error: deliveryError } = await service.from('deliveries').delete().in('id', deliveryIds)
+    if (deliveryError) {
+      return { ok: false, reason: 'failed', error: `تعذّر حذف التوصيلات المرتبطة: ${deliveryError.message}`, impact }
+    }
+  }
+
+  // R2 originals for THIS client only, and only ones we just proved belong to
+  // the deliveries being removed. Anything shared with another delivery or part
+  // of the public portfolio is not in this list.
+  let deletedR2Keys = 0
+  for (const key of impact.r2Keys) {
+    const shared = await service
+      .from('delivery_videos')
+      .select('id, delivery_id, deliveries ( client_id )')
+      .eq('r2_original_key', key)
+      .returns<{ id: string; delivery_id: string | null; deliveries: { client_id: string | null } | null }[]>()
+    const stillReferenced = (shared.data ?? []).filter(
+      (row) => row.delivery_id !== null && !deliveryIds.includes(row.delivery_id),
+    )
+    if (stillReferenced.length > 0) continue
+    try {
+      await env.BUCKET?.delete(key)
+      deletedR2Keys += 1
+    } catch (err) {
+      return {
+        ok: false,
+        reason: 'failed',
+        error: `تعذّر حذف ملف من التخزين: ${String(err)}`,
+        impact,
+      }
+    }
+  }
+
+  const { error: clientError } = await service.from('clients').delete().eq('id', clientId)
+  if (clientError) {
+    return { ok: false, reason: 'failed', error: `تعذّر حذف العميل: ${clientError.message}`, impact }
+  }
+
+  return { ok: true, clientId, deletedDeliveries: deliveryIds.length, deletedVideos, deletedR2Keys }
 }
 
 //----------------------------------------------------------------------------

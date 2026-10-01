@@ -11,6 +11,7 @@ import { renderDeliveryDetail, type DetailPageOptions } from '../../_lib/deliver
 import type { CommunicationsRow } from '../../../_lib/db-types'
 import {
   adminHtml,
+  deliveryReleasable,
   formString,
   isValidUuid,
   loadDeliveryDetail,
@@ -146,21 +147,26 @@ export const onRequestPost: Route = async (context) => {
   }
 
   if (action === 'release') {
-    // Phase 4J: the videos stay locked until the owner explicitly releases
-    // them AFTER the client confirms. Releasing only moves the status; it does
-    // NOT touch the download window (the 3-day countdown still starts on the
-    // client's FIRST download inside gateDownload). Phase 4L: VIEW_ONLY
-    // deliveries never release an original. Phase 4M: releasing unlocks every
-    // active video item in the delivery together.
+    // The videos stay locked until the owner explicitly releases them.
+    // Releasing only moves the status; it does NOT touch the download window
+    // (the 3-day countdown still starts on the client's FIRST download inside
+    // gateDownload). VIEW_ONLY deliveries never release an original. Releasing
+    // unlocks every active video item in the delivery together.
+    //
+    // The client confirmation handshake was removed from the /p page, so a
+    // delivery awaiting release sits in `pending` (link never opened) or
+    // `preview_viewed` (client opened it). `deliveryReleasable` is the single
+    // source of truth shared with the admin button, so the UI can never offer a
+    // release the server would refuse (or hide one it would accept).
     if (detail.delivery_mode !== 'VIEW_AND_DOWNLOAD') {
       return adminHtml(await deliveryPage(service, appUser, base, detail, {
           error: 'هذا التوصيل بوضع «عرض فقط» — لا يتوفر تحميل للأصل.',
         }),
       )
     }
-    if (detail.status !== 'confirmed') {
+    if (!deliveryReleasable(detail.status)) {
       return adminHtml(await deliveryPage(service, appUser, base, detail, {
-          error: 'لا يمكن إطلاق التحميل إلا بعد تأكيد العميل للفيديوهات.',
+          error: 'لا يمكن إطلاق التحميل في هذه الحالة.',
         }),
       )
     }

@@ -2,6 +2,21 @@ export type DeliverySourceType = 'portfolio' | 'r2'
 
 export type DeliveryMode = 'VIEW_ONLY' | 'VIEW_AND_DOWNLOAD'
 
+/**
+ * Phase 5A separation of the two products that share the `deliveries` table:
+ *
+ *   client_delivery  the Owner-managed Client Delivery workflow (full featured,
+ *                    its own expiry semantics, always visible in
+ *                    /admin/deliveries + /admin/clients + Owner statistics).
+ *   temporary_share  a throwaway Coordinator link built on a phone from the
+ *                    portfolio: no client, no record, view-only, dead after
+ *                    exactly 24 hours, never shown in any Owner surface.
+ *
+ * This is an explicit stored column (migration 20260930000016), never inferred
+ * from client_label or any other presentation detail.
+ */
+export type DeliveryShareKind = 'client_delivery' | 'temporary_share'
+
 export type ClientStatus = 'active' | 'archived'
 
 export type SlotStatus = 'planned' | 'active' | 'paused'
@@ -231,6 +246,8 @@ export type DeliveriesRow = {
   // Workspace (WhatsApp is never required there). Used only when no real
   // client row is attached to the delivery.
   client_label: string | null
+  /** Phase 5A — explicit purpose. Owner delivery vs Coordinator temporary share. */
+  share_kind: DeliveryShareKind
   created_at: string
   updated_at: string
 }
@@ -253,6 +270,7 @@ export type DeliveriesInsert = {
   archived_at?: string | null
   client_video_slot_id?: string | null
   client_label?: string | null
+  share_kind?: DeliveryShareKind
   created_at?: string
   updated_at?: string
 }
@@ -272,6 +290,13 @@ export type DeliveriesUpdate = {
   archived_at?: string | null
   client_video_slot_id?: string | null
   client_label?: string | null
+  /**
+   * Which workflow this row belongs to. This is deliberately NOT updatable
+   * through the app: a share must never be converted from one workflow into the
+   * other after the fact (that would let a throwaway link become a full Client
+   * Delivery, or vice versa). Only the migration's backfill sets it.
+   */
+  share_kind?: DeliveryShareKind
   updated_at?: string
 }
 

@@ -46,10 +46,36 @@ export async function runCleanup(
   const videoSelect =
     'delivery_videos(id,item_pos,version,is_active,source_type,r2_original_key,original_deleted_at)'
 
+  // --- Pass 0: Coordinator temporary shares whose 24h link window has ended ---
+  //
+  // A temporary share dies on its own: the coordinator never cleans it up and
+  // it must never appear in the Owner Client Delivery system. Flipping the row
+  // to 'expired' makes the status honest for every surface, and it is also what
+  // stops the self-heal pass below from touching it (temporary shares carry no
+  // R2 original, so there is nothing to delete). Deliberately NO owner
+  // notification here: the owner does not own these rows.
+  const { data: deadShares, error: deadSharesError } = await service
+    .from('deliveries')
+    .update({ status: 'expired', expired_at: now })
+    .eq('share_kind', 'temporary_share')
+    .neq('status', 'expired')
+    .not('token_expires_at', 'is', null)
+    .lte('token_expires_at', now)
+    .select('id')
+  if (deadSharesError) {
+    result.errors.push(`expire temporary shares: ${deadSharesError.message}`)
+  } else if (deadShares && deadShares.length > 0) {
+    result.claimed += deadShares.length
+  }
+
   // --- Pass 1: deliveries whose download window has ended -------------------
+  // Scoped to client deliveries: a temporary share is expired above and has no
+  // download window, so it must never trigger an owner "download expired"
+  // notification or an R2 delete.
   const { data: due, error: dueError } = await service
     .from('deliveries')
     .select(`id, ${videoSelect}`)
+    .eq('share_kind', 'client_delivery')
     .in('status', ['confirmed', 'download_available', 'downloaded'])
     .not('download_expires_at', 'is', null)
     .lte('download_expires_at', now)
@@ -92,6 +118,7 @@ export async function runCleanup(
   const { data: stuck, error: stuckError } = await service
     .from('deliveries')
     .select(`id, ${videoSelect}`)
+    .eq('share_kind', 'client_delivery')
     .eq('status', 'expired')
     .limit(100)
   if (stuckError) {

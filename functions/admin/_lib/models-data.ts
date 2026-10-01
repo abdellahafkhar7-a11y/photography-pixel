@@ -68,6 +68,7 @@ export async function loadModelWorkspace(service: Db): Promise<ModelListItem[]> 
     service
       .from('deliveries')
       .select('id, client_id, status')
+      .eq('share_kind', 'client_delivery')
       .returns<DeliveryRow[]>(),
     service
       .from('delivery_videos')

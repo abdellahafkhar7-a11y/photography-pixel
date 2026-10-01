@@ -113,6 +113,7 @@ async function runReminderPasses(service: Db): Promise<RemindersResult> {
   const { data: expiring, error: expiringError } = await service
     .from('deliveries')
     .select('id, client_visible_id')
+    .eq('share_kind', 'client_delivery')
     .in('status', ['confirmed', 'download_available', 'downloaded'])
     .not('download_expires_at', 'is', null)
     .gt('download_expires_at', now)

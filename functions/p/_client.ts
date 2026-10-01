@@ -1,6 +1,12 @@
 import { recordActivity } from '../_lib/activities'
 import { recordCommunication } from '../_lib/communications'
-import type { ClientsRow, DeliveriesRow, DeliveryVideosRow, DeliveryVideosUpdate } from '../_lib/db-types'
+import type {
+  ClientsRow,
+  DeliveriesRow,
+  DeliveryShareKind,
+  DeliveryVideosRow,
+  DeliveryVideosUpdate,
+} from '../_lib/db-types'
 import { siteUrl, type DeliveryEnv } from '../_lib/env'
 import { createServiceClient, type Db } from '../_lib/supabase'
 import { hashPrivateToken, isValidTokenFormat, splitStableToken } from '../_lib/tokens'
@@ -66,21 +72,15 @@ export async function resolvePrivateDelivery(
 }
 
 /**
- * Phase 5A mobile Coordinator link. Marked purely from stored columns so no
- * migration or new column is needed: a client-less delivery that carries a
- * coordinator-typed name, is view-only, and has a hard link lifetime.
+ * Phase 5A Coordinator TEMPORARY SHARE.
  *
- * These links get the simple viewing page: no download, and no "confirm the
- * videos" handshake (that stays for the classic admin/client flow).
+ * The workflow is identified by the explicit `deliveries.share_kind` column,
+ * never by guessing from a name, a mode or the absence of a client. A temporary
+ * share gets the simple viewing page: no download, no client identity, and no
+ * "confirm the videos" handshake (that stays for the classic admin/client flow).
  */
-export function isCoordinatorMobileLink(delivery: DeliveriesRow): boolean {
-  return (
-    delivery.client_id === null &&
-    typeof delivery.client_label === 'string' &&
-    delivery.client_label.trim().length > 0 &&
-    delivery.delivery_mode === 'VIEW_ONLY' &&
-    typeof delivery.token_expires_at === 'string'
-  )
+export function isTemporaryShare(delivery: { share_kind?: DeliveryShareKind | null }): boolean {
+  return delivery.share_kind === 'temporary_share'
 }
 
 /** Name typed by the coordinator in the mobile flow, else the real client. */
@@ -99,6 +99,10 @@ export function tokenIsActive(delivery: DeliveriesRow, now = Date.now()): boolea
 }
 
 export function downloadAllowed(delivery: DeliveriesRow): boolean {
+  // A Coordinator TEMPORARY SHARE is view-only by product definition. It is
+  // already VIEW_ONLY, but the workflow is refused explicitly as well so the
+  // download endpoint can never be widened by a mode change alone.
+  if (isTemporaryShare(delivery)) return false
   // VIEW_ONLY deliveries never expose the original, regardless of status.
   if (delivery.delivery_mode === 'VIEW_ONLY') return false
   // The original is only downloadable after the owner EXPLICITLY releases it.
@@ -143,8 +147,6 @@ export async function markPreviewViewed(service: Db, deliveryId: string): Promis
   }
 }
 
-export type ConfirmResult = 'confirmed' | 'already' | 'expired' | 'error'
-
 // The active version row set is mirrored per item: every lifecycle timestamp is
 // copied onto each delivery's active items together (one per item position), so
 // per-delivery state stays self-contained in the version history.
@@ -160,38 +162,6 @@ export async function setActiveVersionColumn(
     .update(patch)
     .eq('delivery_id', deliveryId)
     .eq('is_active', true)
-}
-
-export async function confirmDelivery(service: Db, deliveryId: string): Promise<ConfirmResult> {
-  const now = new Date().toISOString()
-  const { data: claimed, error } = await service
-    .from('deliveries')
-    .update({ status: 'confirmed', confirmed_at: now })
-    .eq('id', deliveryId)
-    .in('status', ['pending', 'preview_viewed'])
-    .select('id')
-    .maybeSingle<{ id: string }>()
-  if (error) return 'error'
-  if (claimed) {
-    await setActiveVersionColumn(service, deliveryId, 'confirmed_at', now)
-    await recordActivity(service, deliveryId, 'video_confirmed')
-    await recordCommunication(service, {
-      channel: 'system',
-      direction: 'inbound',
-      entity_type: 'delivery',
-      entity_id: deliveryId,
-      message: 'أكّد العميل استلام الفيديوهات.',
-    })
-    return 'confirmed'
-  }
-  const { data: current } = await service
-    .from('deliveries')
-    .select('status')
-    .eq('id', deliveryId)
-    .maybeSingle<{ status: DeliveriesRow['status'] }>()
-  if (!current) return 'error'
-  if (current.status === 'expired') return 'expired'
-  return 'already'
 }
 
 // Eager server-side expiry used by the download/preview gates. Only flips the
@@ -367,10 +337,6 @@ export function renderInvalidOrExpiredLinkPage(env: DeliveryEnv, request: Reques
   })
 }
 
-type RenderPrivateOptions = {
-  confirmError?: string
-}
-
 // 1-based selection of an active item by its position inside the delivery
 // (the public index used by /preview?item=N and /download?item=N).
 export function itemForPosition(
@@ -382,27 +348,24 @@ export function itemForPosition(
   return list[itemPos - 1] ?? null
 }
 
-export function renderPrivatePage(
-  base: string,
-  token: string,
-  data: PrivateDelivery,
-  options: RenderPrivateOptions = {},
-): string {
+export function renderPrivatePage(base: string, token: string, data: PrivateDelivery): string {
   const { delivery, client, videos, video } = data
-  const pageUrl = buildPrivateUrl(base, token)
   const items = videos.length > 0 ? videos : video ? [video] : []
 
   const expired = isExpired(delivery)
   const viewOnly = delivery.delivery_mode === 'VIEW_ONLY'
-  // Phase 5A mobile links are a pure viewing experience: no originals and no
-  // client-side "confirm" handshake. The classic admin/client flow is
-  // untouched and keeps its confirm → release → download behaviour.
-  const mobileLink = isCoordinatorMobileLink(delivery)
-  // confirmed = the client confirmed but the owner has NOT released the
-  // originals yet (locked). canDownload = the owner released them (or the
-  // client already downloaded) and the shared window is running. VIEW_ONLY
-  // deliveries never expose originals at all.
-  const locked = delivery.status === 'confirmed'
+  // A Coordinator TEMPORARY SHARE is a pure viewing experience: no originals
+  // and no client-side "confirm" handshake. The classic admin/client flow is
+  // untouched and keeps its release → download behaviour.
+  const temporaryShare = isTemporaryShare(delivery)
+  // awaitingRelease = the originals exist but the OWNER has not released them
+  // yet. The client no longer confirms anything, so this covers every
+  // not-yet-released state: `pending` (link never opened), `preview_viewed`
+  // (client opened it) and legacy `confirmed` rows from before the handshake was
+  // removed -- they are all just "waiting for the photographer".
+  // canDownload = the owner released them (or the client already downloaded) and
+  // the window is running. VIEW_ONLY deliveries never expose originals at all.
+  const awaitingRelease = delivery.status === 'pending' || delivery.status === 'preview_viewed' || delivery.status === 'confirmed'
   const canDownload = confirmedState(delivery) && !viewOnly
 
   // Each active item renders as its own preview block. R2 previews stream
@@ -420,9 +383,28 @@ export function renderPrivatePage(
         const heading = items.length > 1
           ? `<div class="video-item-head"><span class="video-item-n">${number}</span><span>الفيديو ${number}</span>${item.version > 1 ? `<span class="pill video-item-pill">النسخة ${item.version}</span>` : ''}</div>`
           : ''
+        // PORTFOLIO ITEM — embedded from the public CDN (Bamboo), which is
+        // cross-origin.
+        //
+        // Fullscreen and Picture-in-Picture are refused by NOT delegating them:
+        // `allowfullscreen` is the legacy delegation for the Fullscreen API, and
+        // the `allow` list below deliberately omits `fullscreen` and
+        // `picture-in-picture`. The embedder must delegate those permissions
+        // explicitly, so without them the nested player cannot enter
+        // fullscreen/PiP and its own request is rejected by the browser. This is
+        // an enforced permission boundary, not something a stylesheet or a
+        // blocking script can fake.
+        //
+        // Download is a separate matter and is enforced server-side: a
+        // portfolio item has no `r2_original_key`, so there is no original to
+        // hand out, and /download refuses anything not explicitly released.
+        //
+        // The R2 branch below uses <video controlslist>, which is UX polish
+        // only — the actual guarantee there is that VIEW_ONLY shares stream
+        // through /preview and the original is never served.
         const body =
           item.source_type === 'portfolio'
-            ? `<div class="video-frame vertical"><iframe src="${escapeHtml(item.portfolio_url ?? '')}" title="الفيديو ${number}" draggable="false" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope" allowfullscreen></iframe><div class="pp-pattern-watermark" aria-hidden="true"></div></div>`
+            ? `<div class="video-frame vertical"><iframe src="${escapeHtml(item.portfolio_url ?? '')}" title="الفيديو ${number}" draggable="false" scrolling="no" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope"></iframe><div class="pp-pattern-watermark" aria-hidden="true"></div></div>`
             : item.r2_original_key
               ? `<div class="video-frame vertical"><video controls preload="metadata" playsinline webkit-playsinline draggable="false" disablepictureinpicture controlslist="nofullscreen nodownload noplaybackrate nopic" src="${escapeHtml(buildPrivateUrl(base, token, `/preview?item=${number}`))}"><p>متصفحك لا يدعم تشغيل الفيديو.</p></video><div class="pp-pattern-watermark" aria-hidden="true"></div></div>`
               : `<p class="muted">الملف غير متاح حالياً.</p>`
@@ -431,30 +413,29 @@ export function renderPrivatePage(
       .join('')
     // 9:16 tiles sit in a 2-column grid on desktop, single column on phones.
     media = items.length > 1 ? `<div class="video-grid">${renderedItems}</div>` : renderedItems
-    media += `<script>(function(){var fr=document.querySelectorAll('.video-frame'),vd=document.querySelectorAll('.video-frame video');function block(e){e.preventDefault();return false}function esc(){for(var i=0;i<vd.length;i++){var el=vd[i];if(document.fullscreenElement===el||document.webkitFullscreenElement===el){var x=document.exitFullscreen||document.webkitExitFullscreen;if(x)x.call(document)}}}for(var j=0;j<fr.length;j++){fr[j].addEventListener('contextmenu',block,true);fr[j].addEventListener('dragstart',block,true)}for(var k=0;k<vd.length;k++){vd[k].setAttribute('draggable','false');vd[k].addEventListener('enterpictureinpicture',block,true)}document.addEventListener('fullscreenchange',esc);document.addEventListener('webkitfullscreenchange',esc)})();<\/script>`
+    // Belt-and-braces UX guards on top of the permission boundary above:
+    // drag/right-click is blocked, picture-in-picture is refused on <video>, and
+    // any fullscreen request that somehow succeeds is exited immediately.
+    media += `<script>(function(){var fr=document.querySelectorAll('.video-frame'),vd=document.querySelectorAll('.video-frame video');function block(e){e.preventDefault();return false}function esc(){for(var i=0;i<fr.length;i++){var el=fr[i];if(document.fullscreenElement===el||document.webkitFullscreenElement===el){var x=document.exitFullscreen||document.webkitExitFullscreen;if(x)x.call(document)}}}for(var j=0;j<fr.length;j++){fr[j].addEventListener('contextmenu',block,true);fr[j].addEventListener('dragstart',block,true)}for(var k=0;k<vd.length;k++){vd[k].setAttribute('draggable','false');vd[k].addEventListener('enterpictureinpicture',block,true)}document.addEventListener('fullscreenchange',esc);document.addEventListener('webkitfullscreenchange',esc)})();<\/script>`
   }
 
   let notice = ''
   if (expired) {
     notice = `<div class="alert error">انتهت صلاحية هذا الرابط — تواصل معنا لإعادة فتحه.</div>`
-  } else if (mobileLink) {
+  } else if (temporaryShare) {
     notice = `<div class="alert info">${icon('clock')} هذا الرابط للعرض فقط، ويتوقف تلقائياً بعد 24 ساعة من إنشائه.</div>`
   } else if (canDownload) {
     notice = `<div class="alert success">${icon('check')} التحميل متاح — يمكنك الآن الحصول على الجودة الأصلية.</div>`
     if (delivery.download_expires_at) {
       notice += `<div class="alert info">${icon('clock')} <span class="countdown" data-expires="${escapeHtml(delivery.download_expires_at)}">التحميل متاح حتى ${escapeHtml(formatDateTime(delivery.download_expires_at))}</span></div>`
     }
-  } else if (locked) {
-    notice = viewOnly
-      ? `<div class="alert success">تم تأكيد الفيديوهات بنجاح — هذا الرابط للعرض فقط.</div>`
-      : `<div class="alert success">تم تأكيد الفيديوهات بنجاح — في انتظار إطلاق التحميل من فريق Photography Pixel.</div>`
   } else {
-    notice = `<div class="confirm-note"><b>الفيديوهات جاهزة للمراجعة.</b> شاهد الفيديوهات ثم اضغط «أؤكد الفيديوهات» عند الانتهاء.</div>`
+    // The client confirmation handshake was removed: there is no button to
+    // press, so the note must not tell the client to press one or claim they
+    // confirmed anything. The delivery simply stays locked until the OWNER
+    // releases the originals.
+    notice = `<div class="awaiting-release"><b>الفيديوهات جاهزة للمراجعة.</b> استمتع بالمشاهدة — وسيتم تفعيل التحميل عند إطلاقه من المصوّر.</div>`
   }
-  if (options.confirmError) {
-    notice += `<div class="alert error">${escapeHtml(options.confirmError)}</div>`
-  }
-
   // Live countdown for the link lifetime and the download window (purely
   // presentational — the real expiry gates stay server-side on /download,
   // /preview, /thumb and the /p page itself).
@@ -471,7 +452,7 @@ export function renderPrivatePage(
   let actions = ''
   if (expired) {
     actions = `<a class="btn btn-success block" href="${escapeHtml(clientContactWaLink(SITE_WHATSAPP))}" target="_blank" rel="noreferrer noopener">${icon('whatsapp')} تواصل عبر واتساب</a>`
-  } else if (mobileLink) {
+  } else if (temporaryShare) {
     // No confirm button and no download button — the mobile workflow never asks
     // the client to do anything but watch.
     actions = `<p class="hint" style="text-align:center;margin-top:.2rem">${icon('eye', 16)} هذه الفيديوهات محفوظة لك — استمتع بالمشاهدة</p>`
@@ -479,16 +460,22 @@ export function renderPrivatePage(
     actions = items
       .map((item, index) => downloadForItem(item, index + 1))
       .join('<div style="height:.6rem"></div>')
-  } else if (locked) {
-    actions = viewOnly
-      ? `<p class="hint" style="text-align:center;margin-top:.2rem">${icon('check', 16)} تم تأكيد الفيديوهات — شكراً لثقتك</p>`
-      : `<p class="hint" style="text-align:center;margin-top:.2rem">${icon('lock', 16)} بانتظار إطلاق التحميل من المصوّر</p>`
   } else {
-    actions = `<form method="post" action="${escapeHtml(pageUrl)}" style="width:100%"><button type="submit" class="btn btn-primary block">${icon('check')} أؤكد الفيديوهات</button></form>`
+    // No confirmation step: the client has nothing to press. The originals stay
+    // locked until the owner releases them, and then the download buttons above
+    // link straight to /download — one click, no intermediate step. This covers
+    // every not-yet-released state, including legacy `confirmed` rows, so no
+    // confirmation wording is shown anywhere on the client page.
+    actions = `<p class="hint" style="text-align:center;margin-top:.2rem">${icon('eye', 16)} استمتع بالمشاهدة — التحميل يُفعَّل بإطلاق المصوّر</p>`
   }
 
+  // A temporary share has no client and no label, so the hero never implies one.
   const clientName = privateDeliveryClientName(delivery, client)
-  const heroSub = clientName ? `تسليم فيديو خاص · ${clientName}` : 'تسليم فيديو خاص'
+  const heroSub = temporaryShare
+    ? 'رابط مشاهدة مؤقت'
+    : clientName
+      ? `تسليم فيديو خاص · ${clientName}`
+      : 'تسليم فيديو خاص'
   const statExpiry = viewOnly
     ? '—'
     : delivery.download_expires_at
@@ -500,7 +487,7 @@ export function renderPrivatePage(
     ? `<div class="stat-cell"><div class="label">ينتهي الرابط في</div><div class="value"><span class="countdown" data-link-expires="${escapeHtml(delivery.token_expires_at)}">${escapeHtml(formatDateTime(delivery.token_expires_at))}</span></div></div>`
     : ''
   // A mobile link is never "waiting" for anything — it is simply ready to watch.
-  const statusBadge = mobileLink && delivery.status !== 'expired'
+  const statusBadge = temporaryShare && delivery.status !== 'expired'
     ? '<span class="badge st-preview_viewed">جاهز للمشاهدة</span>'
     : statusBadgeHtml(delivery.status)
 
@@ -512,7 +499,7 @@ export function renderPrivatePage(
      </div>
      <div class="client-body">
        <div class="card">
-         <div class="between"><h1>${mobileLink ? 'هذا هو الفيديو الخاص بك' : 'فيديو خاص'}</h1>${statusBadge}</div>
+         <div class="between"><h1>${temporaryShare ? 'هذا هو الفيديو الخاص بك' : 'فيديو خاص'}</h1>${statusBadge}</div>
          <p class="muted" style="margin-top:.3rem">${sourcePillHtml(delivery.source_type)}</p>
          <div style="height:1rem"></div>
          ${media}
@@ -524,7 +511,7 @@ export function renderPrivatePage(
            ${linkExpiry || `<div class="stat-cell"><div class="label">آخر موعد للتحميل</div><div class="value">${expired ? '—' : escapeHtml(statExpiry)}</div></div>`}
          </div>
          <div class="actionbar" style="margin-top:1.4rem">${actions}</div>
-         ${!expired && (mobileLink || locked || canDownload) ? `<p class="hint" style="margin-top:1rem">${icon('lock', 16)} الرابط مخصص لك — لا تشاركه مع أي شخص.</p>` : ''}
+         ${!expired && (temporaryShare || awaitingRelease || canDownload) ? `<p class="hint" style="margin-top:1rem">${icon('lock', 16)} الرابط مخصص لك — لا تشاركه مع أي شخص.</p>` : ''}
        </div>
        <div class="card">
          <div class="wa-row">${icon('whatsapp')} <span>هل لديك استفسار؟ يمكنك التواصل معنا مباشرة.</span></div>

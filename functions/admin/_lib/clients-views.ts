@@ -110,6 +110,58 @@ export function renderClients(
   const totalDeliveries = items.reduce((sum, item) => sum + item.deliveryCount, 0)
   const totalSlots = items.reduce((sum, item) => sum + item.slotCount, 0)
 
+  // Owner-only delete control. It is a <details> panel rather than a bare button
+  // so the impact is always visible before it can be submitted, and the impact
+  // numbers themselves come from the server (action=inspect_delete) rather than
+  // being guessed in the browser.
+  const clientDeleteControl = (clientId: string, clientName: string): string => `
+    <details class="client-delete">
+      <summary class="btn btn-text" style="color:var(--error);cursor:pointer;list-style:none">${shellIcon('ban', 15)} حذف</summary>
+      <form method="post" action="/admin/clients" class="card" style="margin-top:.4rem;padding:.7rem;min-width:16rem">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="client_id" value="${escapeHtml(clientId)}">
+        <p class="hint" style="margin:0 0 .5rem">حذف نهائي. يُحذف ما يخص توصيلات هذا العميل فقط، ولا يمس فيديوهات المعرض العام ولا روابط المشاركة المؤقتة.</p>
+        <p class="hint" data-impact-for="${escapeHtml(clientId)}" style="margin:0 0 .5rem">جارٍ فحص الارتباطات…</p>
+        <label class="field"><span>اكتب اسم العميل للتأكيد: ${escapeHtml(clientName)}</span>
+          <input type="text" name="confirm" required autocomplete="off" placeholder="${escapeHtml(clientName)}">
+        </label>
+        <div class="actionbar">
+          <button class="btn btn-subtle" type="button" data-cancel-delete>إلغاء</button>
+          <button class="btn btn-primary" type="submit" style="background:var(--error);border-color:var(--error)" data-delete-submit disabled>تأكيد الحذف</button>
+        </div>
+      </form>
+    </details>`
+
+  const clientDeleteScript = `<script>(function(){
+    function closestPanel(node){ var el=node; while(el&&el.tagName!=='DETAILS'){el=el.parentElement} return el }
+    Array.prototype.forEach.call(document.querySelectorAll('[data-impact-for]'), function(node){
+      var id=node.getAttribute('data-impact-for');
+      var details=closestPanel(node);
+      if(!details||details.dataset.loaded==='1') return;
+      details.dataset.loaded='1';
+      var body=new URLSearchParams(); body.set('action','inspect_delete'); body.set('client_id',id);
+      fetch('/admin/clients',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body.toString()})
+        .then(function(res){return res.json()})
+        .then(function(d){
+          if(d&&d.error){ node.textContent=d.error; return }
+          var parts=[];
+          parts.push(d.projects+' مشروع');
+          parts.push(d.slots+' مساحة فيديو');
+          parts.push(d.deliveries+' توصيل');
+          parts.push(d.videos+' فيديو');
+          if(d.r2Keys&&d.r2Keys.length) parts.push(d.r2Keys.length+' ملف خاص');
+          node.textContent='سيُحذف: '+parts.join(' · ');
+          var blocked=d.projects>0||d.slots>0;
+          var submit=details.querySelector('[data-delete-submit]');
+          if(blocked){ node.textContent+=' — الحذف مرفوض لهذه الحالة، استخدم الأرشفة.'; if(submit) submit.disabled=true }
+        })
+        .catch(function(){ node.textContent='تعذّر فحص الارتباطات — حدّث الصفحة.' });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-cancel-delete]'), function(btn){
+      btn.addEventListener('click', function(){ var d=closestPanel(btn); if(d) d.removeAttribute('open') });
+    });
+  })();<\/script>`
+
   const rows =
     filtered.length === 0
       ? `<tr><td colspan="8"><p class="muted" style="padding:.5rem 0">لا يوجد عملاء مطابقون.</p></td></tr>`
@@ -123,7 +175,12 @@ export function renderClients(
               <td>${slotCount > 0 ? `${filledSlots}<span class="hint" style="display:block">من أصل ${slotCount} — ${client.video_slots_count} في الخطة</span>` : '<span class="muted">—</span>'}</td>
               <td>${deliveryCount}</td>
               <td>${latestDelivery ? `${statusBadge(latestDelivery.status)}<br><span class="hint">${escapeHtml(formatDateTime(latestDelivery.created_at))}</span>` : '—'}</td>
-              <td><a class="btn btn-subtle" href="/admin/clients/${client.id}">${shellIcon('eye', 15)} فتح</a></td>
+              <td>
+                <span style="display:inline-flex;gap:.35rem;align-items:center;flex-wrap:wrap">
+                  <a class="btn btn-subtle" href="/admin/clients/${client.id}">${shellIcon('eye', 15)} فتح</a>
+                  ${clientDeleteControl(client.id, client.name ?? '')}
+                </span>
+              </td>
             </tr>`,
           )
           .join('')
@@ -197,11 +254,16 @@ export function renderClients(
       <tbody>${rows}</tbody>
     </table></div></div>`
 
-  return shell('العملاء', content, {
-    active: 'clients',
-    user: appUser,
-    crumbs: 'Photography Pixel / العملاء',
-  })
+  return shell(
+    'العملاء',
+    content,
+    {
+      active: 'clients',
+      user: appUser,
+      crumbs: 'Photography Pixel / العملاء',
+    },
+    clientDeleteScript,
+  )
 }
 
 //----------------------------------------------------------------------------

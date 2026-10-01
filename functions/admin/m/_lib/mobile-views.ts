@@ -1,46 +1,34 @@
 import { escapeHtml, shellIcon } from '../../_lib/shell'
 import { profileDisplayName } from '../../_lib/profile'
 import { thumbUrlFor } from '../../_lib/bamboo'
-import type { DeliveryStatus } from '../../../_lib/db-types'
 import type { AppUserRow } from '../../_lib/types'
 import { backLink, mobilePage } from '../../_lib/mobile-shell'
 import type { PortfolioOption } from '../../deliveries/_helpers'
-import type { MobileDeliveryRow, MobileHomeStats, MobileNotification } from './mobile-data'
+import type { MobileNotification } from './mobile-data'
+
+/**
+ * Fixed product rule for a Coordinator temporary share, mirrored from the server
+ * constant TEMPORARY_SHARE_TTL_MS so the UI never implies a different window
+ * than the one the server actually enforces.
+ */
+export const TEMPORARY_SHARE_HOURS = 24
 
 //============================================================================
 // Phase 5A — Mobile Team Workspace views (presentation only).
+//
+// The Coordinator app is TEMPORARY VIDEO SHARING. Screens here are limited to:
+//   الرئيسية   how the app works + entry points
+//   الأعمال     the public portfolio, with multi-select
+//   المزيد      own notifications + own account
+// There is no delivery list, no delivery history and no client anywhere in this
+// app; those belong to the Owner Client Delivery system.
+//
 // Every screen is a server-rendered page for the same authenticated data the
-// admin uses. Progressive enhancement: the pages render and are usable as
-// plain HTML; small inline scripts add the app-like selection, preview sheet
-// and the locally stored private link. No client-side security decisions are
-// made here — the server re-validates everything.
+// admin uses. Progressive enhancement: the pages render and are usable as plain
+// HTML; small inline scripts add the app-like selection and the success sheet.
+// No client-side security decisions are made here — the server re-validates
+// everything.
 //============================================================================
-
-const STATUS_LABEL: Record<DeliveryStatus, string> = {
-  pending: 'بانتظار العميل',
-  preview_viewed: 'فُتحت المعاينة',
-  confirmed: 'مؤكد',
-  download_available: 'التحميل متاح',
-  downloaded: 'تم التحميل',
-  expired: 'منتهي',
-}
-
-const STATUS_TONE: Record<DeliveryStatus, string> = {
-  pending: '',
-  preview_viewed: 'accent',
-  confirmed: 'accent',
-  download_available: 'ok',
-  downloaded: 'ok',
-  expired: 'err',
-}
-
-export type MobileFilter = 'all' | 'active' | 'downloaded' | 'expired'
-
-export function statusGroup(status: DeliveryStatus): Exclude<MobileFilter, 'all'> {
-  if (status === 'expired') return 'expired'
-  if (status === 'downloaded') return 'downloaded'
-  return 'active'
-}
 
 function fmtDate(iso: string): string {
   const t = new Date(iso).getTime()
@@ -153,68 +141,24 @@ function sheetHtml(): string {
 // Home — /admin/m
 //----------------------------------------------------------------------------
 
-function statTile(value: number, label: string, tone: string): string {
-  return `<div class="m-kv" style="flex-direction:column;align-items:flex-start;gap:.15rem;flex:1;min-width:0">
-    <span class="m-hero-title" style="font-size:1.3rem;color:${tone}">${value}</span>
-    <span class="m-tiny">${label}</span>
-  </div>`
-}
-
-function deliveryRow(row: MobileDeliveryRow): string {
-  const tone = STATUS_TONE[row.status]
-  return `
-  <article class="m-drow" data-delivery="${row.id}">
-    <span class="m-drow-ico">${shellIcon('package', 20)}</span>
-    <div class="m-drow-body">
-      <div class="m-drow-name">${escapeHtml(row.name)}</div>
-      <div class="m-drow-meta">
-        <span class="m-pill ${tone}">${STATUS_LABEL[row.status] ?? row.status}</span>
-        <span class="m-pill">${row.videoCount} فيديو</span>
-        <span class="m-pill">${fmtDate(row.createdAt)}</span>
-      </div>
-      <div class="m-drow-actions">
-        <button class="m-btn m-btn-ghost" type="button" data-copy-for="${row.id}" disabled>${shellIcon('copy', 16)} نسخ الرابط</button>
-        <a class="m-btn m-btn-ghost" href="#" data-open-for="${row.id}" aria-disabled="true" hidden>${shellIcon('external', 16)} فتح</a>
-      </div>
-      <div class="m-drow-link" data-link-for="${row.id}" hidden></div>
-    </div>
-  </article>`
-}
-
-export function renderMobileHome(
-  appUser: AppUserRow,
-  stats: MobileHomeStats,
-  recent: MobileDeliveryRow[],
-  unread: number,
-): string {
+export function renderMobileHome(appUser: AppUserRow, unread: number): string {
   const content = `
   <section class="m-card">
     <div class="m-eyebrow">${roleLabel(appUser)}</div>
     <h2 class="m-hero-title" style="margin-top:.2rem">أهلاً، ${escapeHtml(profileDisplayName(appUser))}</h2>
-    <p class="m-muted" style="margin-top:.3rem">أنشئ رابط تسليم للعميل في خطوات بسيطة: اختر الفيديوهات، اكتب الاسم، وشارك الرابط.</p>
-    <div style="display:flex;gap:.2rem;margin-top:1rem">
-      ${statTile(stats.active, 'نشط', 'var(--m-accent)')}
-      ${statTile(stats.delivered, 'تم التحميل', 'var(--m-success)')}
-      ${statTile(stats.expired, 'منتهي', 'var(--m-muted)')}
-      ${statTile(stats.videos, 'فيديو', 'var(--m-blue)')}
-    </div>
+    <p class="m-muted" style="margin-top:.3rem">مشاركة فيديوهات في خطوات بسيطة: افتح الأعمال، اختر الفيديو، أنشئ الرابط، وشاركه.</p>
   </section>
 
   <div class="m-tiles">
-    <a class="m-tile" href="/admin/m/new">
-      <span class="m-tile-ico">${shellIcon('link', 21)}</span>
-      <span class="m-tile-t">تسليم جديد</span>
-      <span class="m-tile-s">اسم العميل + فيديوهاتك → رابط واحد</span>
-    </a>
     <a class="m-tile" href="/admin/m/portfolio">
-      <span class="m-tile-ico alt">${shellIcon('video', 21)}</span>
+      <span class="m-tile-ico">${shellIcon('video', 21)}</span>
       <span class="m-tile-t">الأعمال</span>
       <span class="m-tile-s">تصفّح معرض الفيديوهات واختر ما تريد</span>
     </a>
-    <a class="m-tile" href="/admin/m/deliveries">
-      <span class="m-tile-ico alt">${shellIcon('package', 21)}</span>
-      <span class="m-tile-t">التسليمات</span>
-      <span class="m-tile-s">${stats.total} توصيل — الحالة ونسخ الرابط</span>
+    <a class="m-tile" href="/admin/m/new">
+      <span class="m-tile-ico alt">${shellIcon('link', 21)}</span>
+      <span class="m-tile-t">إنشاء رابط</span>
+      <span class="m-tile-s">فيديوهاتك → رابط مشاهدة واحد</span>
     </a>
     <a class="m-tile" href="/admin/m/more">
       <span class="m-tile-ico alt">${shellIcon('bell', 21)}</span>
@@ -223,17 +167,23 @@ export function renderMobileHome(
     </a>
   </div>
 
-  <h2 class="m-section-title">${shellIcon('clock', 17)} آخر التوصيلات</h2>
-  ${recent.length > 0 ? recent.map(deliveryRow).join('') : '<div class="m-card m-empty">لا توجد توصيلات بعد. ابدأ بتوصيل جديد من الزر بالأعلى.</div>'}`
+  <h2 class="m-section-title">${shellIcon('lock', 17)} كيف يعمل الرابط</h2>
+  <div class="m-card">
+    <p class="m-muted" style="margin:.2rem 0 .8rem">${escapeHtml(`الرابط صالح ${TEMPORARY_SHARE_HOURS} ساعة من إنشائه فقط، ويختفي بعدها تلقائياً — بدون أي متابعة أو تنظيف منك.`)}</p>
+    <ol class="m-steps">
+      <li class="m-step"><span class="m-step-n">1</span><span class="m-step-t">افتح <strong>الأعمال</strong> واختر الفيديو.</span></li>
+      <li class="m-step"><span class="m-step-n">2</span><span class="m-step-t">اضغط <strong>إنشاء رابط</strong>.</span></li>
+      <li class="m-step"><span class="m-step-n">3</span><span class="m-step-t"><strong>انسخ الرابط</strong> وشاركه.</span></li>
+    </ol>
+    <p class="m-muted" style="margin-top:.8rem">الزائر يشاهد فقط. لا تحميل ولا تأكيد — الرابط شخصي ولا يُربط بعميل.</p>
+  </div>`
 
-  const script = `<script>${SCRIPT_BASE}
-${LINK_SCRIPT}</script>`
+  const script = `<script>${SCRIPT_BASE}</script>`
 
   return mobilePage({
     title: 'الرئيسية',
     user: appUser,
     tab: 'home',
-    subtitle: `${stats.active} توصيل نشط`,
     content,
     scripts: script,
     unread,
@@ -319,7 +269,7 @@ ${PICK_SCRIPT}</script>${sheetHtml()}`
     title: 'الأعمال',
     user: appUser,
     tab: 'portfolio',
-    subtitle: 'اختر فيديوهات التسليم',
+    subtitle: 'اختر الفيديوهات للمشاركة',
     leading: backLink('/admin/m'),
     content,
     scripts: script,
@@ -406,20 +356,19 @@ if (search) {
 }
 `
 
-// The delivery link is shown once, right after creation. The server never
-// stores it in a recoverable form, so the app keeps it on this device only.
+// Success after creating a temporary share.
+//
+// Phase 5A requirement: the coordinator sees ONLY the confirmation, the link
+// and two buttons. There is no client name, no video count, no mode row, no
+// identifier, no expiry timestamp and no link to a delivery list — because
+// there is no delivery record on the coordinator's side at all.
 function successSheetHtml(): string {
   return `
 <div class="m-sheet" id="m-done" role="dialog" aria-modal="true" aria-labelledby="m-done-title">
-  <div class="m-sheet-top">
-    <span class="m-sheet-title" id="m-done-title">تم إنشاء رابط التسليم بنجاح</span>
-    <a class="m-sheet-close" href="/admin/m/deliveries" aria-label="إغلاق">${shellIcon('close', 18)}</a>
-  </div>
   <div class="m-sheet-body">
     <div class="m-inner">
       <div class="m-ok-badge">${shellIcon('check', 30)}</div>
-      <h2 class="m-hero-title">الرابط جاهز للمشاركة</h2>
-      <p class="m-muted" style="margin-top:.35rem">أرسله للعميل <strong data-done-name></strong> عبر أي تطبيق مراسلة.</p>
+      <h2 class="m-hero-title" id="m-done-title">تم إنشاء الرابط</h2>
       <div class="m-linkbox" style="margin-top:1rem"><span style="flex:1" data-done-link></span></div>
       <div class="m-actions" style="margin-top:1rem">
         <button class="m-btn m-btn-primary m-btn-lg m-btn-block" type="button" data-done-copy>${shellIcon('copy', 18)} نسخ الرابط</button>
@@ -427,11 +376,8 @@ function successSheetHtml(): string {
       <div class="m-actions-row" style="margin-top:.6rem">
         <a class="m-btn m-btn-ghost m-btn-block" href="#" target="_blank" rel="noopener" data-done-open>${shellIcon('external', 17)} فتح الرابط</a>
       </div>
-      <section class="m-card" style="margin-top:1.1rem" data-done-meta></section>
-      <p class="m-tiny" style="text-align:center;margin-top:.8rem">حُفظ الرابط على هذا الجهاز. انسخه وأرسله للعميل بنفسك — لا يُرسل الموقع أي رسالة تلقائياً.</p>
       <div class="m-actions" style="margin-top:.9rem">
-        <a class="m-btn m-btn-ghost m-btn-block" href="/admin/m/deliveries">${shellIcon('package', 17)} إلى التسليمات</a>
-        <a class="m-btn m-btn-quiet m-btn-block" href="/admin/m/new">تسليم جديد آخر</a>
+        <a class="m-btn m-btn-quiet m-btn-block" href="/admin/m/new">إنشاء رابط آخر</a>
       </div>
     </div>
   </div>
@@ -439,31 +385,26 @@ function successSheetHtml(): string {
 }
 
 //----------------------------------------------------------------------------
-// Create delivery — /admin/m/new
+// Create temporary share — /admin/m/new
 //----------------------------------------------------------------------------
 
 export function renderMobileNew(
   appUser: AppUserRow,
-  state: { error?: string; name?: string; mode?: string },
+  state: { error?: string },
   unread: number,
 ): string {
   const content = `
   <section class="m-card">
     <div class="m-eyebrow">${shellIcon('link', 14)} رابط واحد لكل الفيديوهات</div>
-    <h2 class="m-hero-title" style="margin-top:.3rem">بيانات العميل</h2>
-    <p class="m-muted" style="margin-top:.3rem">الاسم فقط يكفي. لا نطلب واتساب ولا بريداً ولا العنوان.</p>
+    <h2 class="m-hero-title" style="margin-top:.3rem">إنشاء رابط</h2>
+    <p class="m-muted" style="margin-top:.3rem">لا اسم ولا بيانات عميل. الرابط للمشاهدة فقط.</p>
     ${state.error ? `<div class="m-alert error" role="alert">${escapeHtml(state.error)}</div>` : ''}
-    <form id="m-new-form" method="post" action="/admin/m/new" novalidate>
-      <label class="m-field">
-        <span>اسم العميل</span>
-        <input class="m-input" type="text" name="name" id="m-name" value="${escapeHtml(state.name ?? '')}" placeholder="مثال: سارة بنعلي" maxlength="80" autocomplete="name" enterkeyhint="done" required>
-      </label>
-    </form>
+    <form id="m-new-form" method="post" action="/admin/m/new" novalidate></form>
   </section>
   <section class="m-card">
     <div class="m-eyebrow">${shellIcon('video', 14)} الفيديوهات</div>
     <h2 class="m-hero-title" style="margin-top:.3rem">الفيديوهات المختارة <span class="m-tiny" id="m-sel-count"></span></h2>
-    <p class="m-muted" style="margin-top:.3rem">كل الفيديوهات المختارة تُرسل في رابط واحد للعميل.</p>
+    <p class="m-muted" style="margin-top:.3rem">كل الفيديوهات المختارة تُجمع في رابط واحد للمشاهدة.</p>
     <div id="m-sel-list" class="m-list"></div>
     <p class="m-tiny" id="m-sel-empty" style="margin-top:.4rem">لم تختر فيديوهات بعد.</p>
     <a class="m-btn m-btn-ghost m-btn-block" href="/admin/m/portfolio" style="margin-top:.6rem">${shellIcon('video', 17)} اختيار فيديوهات</a>
@@ -475,13 +416,13 @@ export function renderMobileNew(
         <div class="m-list-row">
           <span class="m-list-ico">${shellIcon('eye', 18)}</span>
           <span>معاينة فقط — بدون تحميل</span>
-          <span class="m-chip on" aria-hidden="true">${shellIcon('lock', 13)} 24 ساعة</span>
+          <span class="m-chip on" aria-hidden="true">${shellIcon('lock', 13)} ${TEMPORARY_SHARE_HOURS} ساعة</span>
         </div>
       </div>
-      <p class="m-tiny" style="margin-top:.35rem">العميل يشاهد الفيديوهات فقط، والرابط يتوقف تلقائياً بعد 24 ساعة من إنشائه.</p>
+      <p class="m-tiny" style="margin-top:.35rem">${escapeHtml(`المشاهد يشاهد الفيديوهات فقط، والرابط يتوقف تلقائياً بعد ${TEMPORARY_SHARE_HOURS} ساعة من إنشائه — بدون أي تنظيف منك.`)}</p>
     </div>
     <div class="m-actions" style="margin-top:1.1rem">
-      <button class="m-btn m-btn-primary m-btn-lg m-btn-block" type="submit" id="m-submit" form="m-new-form">${shellIcon('check', 18)} إنشاء رابط التسليم</button>
+      <button class="m-btn m-btn-primary m-btn-lg m-btn-block" type="submit" id="m-submit" form="m-new-form">${shellIcon('check', 18)} إنشاء رابط</button>
     </div>
     <p class="m-tiny" style="text-align:center;margin-top:.9rem">${shellIcon('lock', 13)} يُحفظ الرابط على هذا الجهاز فقط، ويظهر مرة واحدة عند الإنشاء.</p>
   </section>
@@ -491,10 +432,10 @@ export function renderMobileNew(
 ${NEW_SCRIPT}</script>`
 
   return mobilePage({
-    title: 'تسليم جديد',
+    title: 'إنشاء رابط',
     user: appUser,
     tab: 'portfolio',
-    subtitle: 'اسم العميل وفيديوهاته ورابط واحد',
+    subtitle: 'فيديوهاتك في رابط واحد',
     leading: backLink('/admin/m/portfolio'),
     content,
     scripts: script,
@@ -553,56 +494,45 @@ function fail(message){
 
 form.addEventListener('submit', function(ev){
   ev.preventDefault();
-  var name = document.getElementById('m-name').value.trim().replace(/\s+/g, ' ');
-  if (name.length < 2) { fail('أدخل اسم العميل (حرفان على الأقل).'); return; }
   if (M.sel.length === 0) { fail('اختر فيديو واحداً على الأقل من الأعمال.'); return; }
   submit.disabled = true;
   submit.textContent = 'جارٍ إنشاء الرابط…';
   fetch('/admin/m/new', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: name, videos: M.sel.map(function(s){ return s.url; }) })
+    // Videos only. No client identity is collected or sent.
+    body: JSON.stringify({ videos: M.sel.map(function(s){ return s.url; }) })
   }).then(function(res){
     return res.json().then(function(data){ return { ok: res.ok, data: data }; });
   }).then(function(result){
     if (!result.ok) {
       fail(result.data && result.data.error ? result.data.error : 'تعذّر إنشاء الرابط.');
       submit.disabled = false;
-      submit.textContent = 'إنشاء رابط التسليم';
+      submit.textContent = 'إنشاء رابط';
       return;
     }
     M.saveLink(result.data.deliveryId, {
       link: result.data.link,
-      name: name,
       videos: result.data.videoCount,
       mode: result.data.mode,
+      shareKind: result.data.shareKind,
       at: result.data.createdAt
     });
     M.clearSel();
-    showSuccess(result.data, name);
+    showSuccess(result.data);
   }).catch(function(){
     fail('تعذّر الاتصال بالخادم. تحقق من الشبكة وحاول مجدداً.');
     submit.disabled = false;
-    submit.textContent = 'إنشاء رابط التسليم';
+    submit.textContent = 'إنشاء رابط';
   });
 });
 
-function showSuccess(data, name){
+// Only the confirmation, the link and the two buttons — per the Phase 5A spec.
+function showSuccess(data){
   var sheet = document.getElementById('m-done');
   if (!sheet) return;
   var linkEl = sheet.querySelector('[data-done-link]');
-  var nameEl = sheet.querySelector('[data-done-name]');
-  var metaEl = sheet.querySelector('[data-done-meta]');
   if (linkEl) linkEl.textContent = data.link;
-  if (nameEl) nameEl.textContent = name;
-  if (metaEl) {
-    metaEl.innerHTML =
-      '<div class="m-kv"><span class="k">العميل</span><span class="v">' + esc(name) + '</span></div>' +
-      '<div class="m-kv"><span class="k">عدد الفيديوهات</span><span class="v">' + (data.videoCount || 0) + '</span></div>' +
-      '<div class="m-kv"><span class="k">الوضع</span><span class="v">معاينة فقط — بدون تحميل</span></div>' +
-      '<div class="m-kv"><span class="k">الرمز</span><span class="v" style="direction:ltr">' + esc(data.identifier) + '</span></div>' +
-      '<div class="m-kv"><span class="k">ينتهي في</span><span class="v">' + esc(data.expiresAt ? fmtStamp(data.expiresAt) : '—') + '</span></div>';
-  }
   sheet.classList.add('open');
   document.body.style.overflow = 'hidden';
   var copyBtn = sheet.querySelector('[data-done-copy]');
@@ -614,102 +544,6 @@ function showSuccess(data, name){
   var openBtn = sheet.querySelector('[data-done-open]');
   if (openBtn) openBtn.href = data.link;
 }
-function esc(value){
-  var d = document.createElement('div');
-  d.textContent = value == null ? '' : String(value);
-  return d.innerHTML;
-}
-function fmtStamp(value){
-  var d = new Date(value);
-  if (isNaN(d.getTime())) return '—';
-  var pad = function(n){ return n < 10 ? '0' + n : String(n); };
-  return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + ' — ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
-}
-`
-
-//----------------------------------------------------------------------------
-// Deliveries — /admin/m/deliveries
-//----------------------------------------------------------------------------
-
-export function renderMobileDeliveries(
-  appUser: AppUserRow,
-  rows: MobileDeliveryRow[],
-  filter: { q: string; status: MobileFilter },
-  unread: number,
-): string {
-  const q = filter.q.trim().toLowerCase()
-  const visible = rows.filter((row) => {
-    if (filter.status !== 'all' && statusGroup(row.status) !== filter.status) return false
-    if (!q) return true
-    return (
-      row.name.toLowerCase().includes(q) ||
-      (row.clientVisibleId ?? '').toLowerCase().includes(q) ||
-      row.id.toLowerCase().includes(q)
-    )
-  })
-
-  const chip = (value: MobileFilter, label: string) => {
-    const count = value === 'all' ? rows.length : rows.filter((r) => statusGroup(r.status) === value).length
-    const href = `/admin/m/deliveries?status=${value}${q ? `&q=${encodeURIComponent(filter.q)}` : ''}`
-    return `<a class="m-chip ${filter.status === value ? 'on' : ''}" href="${href}">${label} <span class="n">${count}</span></a>`
-  }
-
-  const content = `
-  <form class="m-search" method="get" action="/admin/m/deliveries" role="search">
-    <span class="m-search-ico">${shellIcon('search', 19)}</span>
-    <input class="m-input" type="search" name="q" value="${escapeHtml(filter.q)}" placeholder="ابحث باسم العميل…" autocomplete="off" enterkeyhint="search">
-    <button type="submit" aria-label="بحث">${shellIcon('refresh', 18)}</button>
-  </form>
-  <div class="m-chips">
-    ${chip('all', 'الكل')}${chip('active', 'نشط')}${chip('downloaded', 'تم التحميل')}${chip('expired', 'منتهي')}
-  </div>
-  <p class="m-muted" style="margin:.4rem .1rem .7rem">${visible.length} توصيل</p>
-  ${visible.length > 0 ? visible.map(deliveryRow).join('') : '<div class="m-card m-empty">لا توجد توصيلات مطابقة.</div>'}
-  <div class="m-actions" style="margin-top:1rem">
-    <a class="m-btn m-btn-primary m-btn-block" href="/admin/m/new">${shellIcon('plus', 18)} توصيل جديد</a>
-  </div>`
-
-  const script = `<script>${SCRIPT_BASE}
-${LINK_SCRIPT}</script>`
-
-  return mobilePage({
-    title: 'التسليمات',
-    user: appUser,
-    tab: 'deliveries',
-    subtitle: `${rows.length} توصيل`,
-    content,
-    scripts: script,
-    unread,
-  })
-}
-
-// Applies the locally stored private links to the delivery rows: a link can
-// only be re-opened on a device that stored it at creation time, and the UI
-// says so plainly when it is not available.
-const LINK_SCRIPT = `
-Array.prototype.forEach.call(document.querySelectorAll('[data-delivery]'), function(row){
-  var id = row.getAttribute('data-delivery');
-  var entry = M.links[id];
-  if (!entry || !entry.link) return;
-  var copy = row.querySelector('[data-copy-for="' + id + '"]');
-  var open = row.querySelector('[data-open-for="' + id + '"]');
-  var link = row.querySelector('[data-link-for="' + id + '"]');
-  if (copy) {
-    copy.disabled = false;
-    copy.addEventListener('click', function(){
-      M.copy(entry.link).then(function(){ M.toast('تم نسخ الرابط'); }).catch(function(){ M.toast('تعذّر النسخ — انسخ الرابط يدوياً'); });
-    });
-  }
-  if (open) {
-    open.hidden = false;
-    open.removeAttribute('aria-disabled');
-    open.href = entry.link;
-  }
-  if (link) {
-    link.hidden = false;
-    link.textContent = entry.link;
-  }
-});
 `
 
 //----------------------------------------------------------------------------
@@ -753,14 +587,13 @@ export function renderMobileMore(
   <section class="m-card">
     <div class="m-list">
       <a href="/admin"><span class="m-list-ico">${shellIcon('grid', 18)}</span><span style="flex:1">لوحة التحكم الكاملة</span>${shellIcon('arrowLeft', 16)}</a>
-      <a href="/admin/m/deliveries"><span class="m-list-ico">${shellIcon('package', 18)}</span><span style="flex:1">كل التسليمات</span>${shellIcon('arrowLeft', 16)}</a>
       <a href="/admin/m/portfolio"><span class="m-list-ico">${shellIcon('video', 18)}</span><span style="flex:1">معرض الأعمال</span>${shellIcon('arrowLeft', 16)}</a>
     </div>
   </section>
 
   <h2 class="m-section-title">${shellIcon('lock', 17)} الخصوصية</h2>
   <section class="m-card">
-    <p class="m-muted">أسماء العملاء والروابط التي تنشئها تبقى على هذا الجهاز. صورة الملف الشخصي ومعلومات الحساب تُدار من لوحة التحكم.</p>
+    <p class="m-muted">${escapeHtml(`لا يطلب التطبيق أسماء أو بيانات عملاء. الروابط التي تنشئها تبقى على هذا الجهاز فقط، وتتحول إلى وضع غير فعال تلقائياً بعد ${TEMPORARY_SHARE_HOURS} ساعة.`)} صورة الملف الشخصي ومعلومات الحساب تُدار من لوحة التحكم.</p>
   </section>
 
   <div class="m-actions" style="margin-top:1.2rem">

@@ -139,8 +139,8 @@ const BRAND_STYLES = `
      fullscreen element regardless of the control. */
   .video-frame video::-webkit-media-controls-fullscreen-button{display:none!important}
   .video-frame video::-webkit-media-controls-picture-in-picture-button{display:none!important}
-  .confirm-note{margin-top:1rem;background:var(--accent-light);border:1px solid rgba(54,36,119,.14);border-radius:var(--radius-lg);padding:1rem 1.1rem;color:var(--text-secondary);font-size:.92rem}
-  .confirm-note b{color:var(--accent)}
+  .awaiting-release{margin-top:1rem;background:var(--accent-light);border:1px solid rgba(54,36,119,.14);border-radius:var(--radius-lg);padding:1rem 1.1rem;color:var(--text-secondary);font-size:.92rem}
+  .awaiting-release b{color:var(--accent)}
   .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.75rem;margin-top:1.1rem}
   .stat-cell{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:.9rem 1rem;box-shadow:var(--shadow-sm)}
   .stat-cell .label{font-size:.68rem}

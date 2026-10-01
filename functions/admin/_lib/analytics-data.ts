@@ -225,9 +225,12 @@ export async function loadAnalyticsData(service: Db, params?: URLSearchParams): 
     return true
   }
 
+  // Owner analytics measure CLIENT DELIVERIES. Coordinator temporary shares are
+  // excluded so they cannot distort volume, conversion or status breakdowns.
   const statusRes = await service
     .from('deliveries')
     .select('created_at, status')
+    .eq('share_kind', 'client_delivery')
     .returns<{ created_at: string; status: DeliveryStatus }[]>()
 
   const activityRes = await service

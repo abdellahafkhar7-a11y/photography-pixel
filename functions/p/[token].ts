@@ -3,9 +3,7 @@ import { shareBaseUrl, type DeliveryEnv } from '../_lib/env'
 import { createServiceClient } from '../_lib/supabase'
 import { isValidTokenFormat, splitStableToken } from '../_lib/tokens'
 import {
-  confirmDelivery,
   expireDeliveryIfDue,
-  isCoordinatorMobileLink,
   markPreviewViewed,
   privatePageResponse,
   renderInvalidOrExpiredLinkPage,
@@ -54,42 +52,10 @@ export const onRequestGet: Route = async (context) => {
   return privatePageResponse(renderPrivatePage(base, token, data))
 }
 
-export const onRequestPost: Route = async (context) => {
-  const token = String((context.params as { token: string }).token)
-  const invalid = renderInvalidOrExpiredLinkPage(context.env, context.request)
-  if (!isValidTokenFormat(splitStableToken(token).secret)) return invalid
-
-  const resolved = await resolvePrivateDelivery(context.env, token)
-  if (resolved.kind !== 'ok') return invalid
-  const { delivery } = resolved.data
-  if (!tokenIsActive(delivery)) return invalid
-
-  const service = createServiceClient(context.env)
-  if (!service) return invalid
-
-  // A Phase 5A mobile link is view-only and has no client confirmation step, so
-  // there is nothing for a POST here to do. Reject it instead of flipping the
-  // delivery status behind the coordinator's back.
-  if (isCoordinatorMobileLink(delivery)) {
-    return new Response(null, { status: 405, headers: { Allow: 'GET' } })
-  }
-
-  const base = shareBaseUrl(context.env, context.request)
-  const result = await confirmDelivery(service, delivery.id)
-
-  if (result === 'confirmed' || result === 'already') {
-    const fresh = await resolvePrivateDelivery(context.env, token)
-    const data = fresh.kind === 'ok' ? fresh.data : resolved.data
-    return privatePageResponse(renderPrivatePage(base, token, data))
-  }
-  if (result === 'expired') {
-    const fresh = await resolvePrivateDelivery(context.env, token)
-    const data = fresh.kind === 'ok' ? fresh.data : resolved.data
-    return privatePageResponse(renderPrivatePage(base, token, data))
-  }
-  return privatePageResponse(
-    renderPrivatePage(base, token, resolved.data, {
-      confirmError: 'تعذّر إتمام التأكيد، حاول مرة أخرى.',
-    }),
-  )
-}
+// The client confirmation handshake was removed: the /p page has no form, no
+// button and no intermediate step. Downloads are plain <a href="/download">
+// links that start immediately. Nothing on this page is state-changing for the
+// client any more, so every POST is refused rather than leaving a
+// state-mutating endpoint with no UI in front of it.
+export const onRequestPost: Route = () =>
+  new Response(null, { status: 405, headers: { Allow: 'GET' } })

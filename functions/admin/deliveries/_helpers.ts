@@ -5,12 +5,21 @@ import type {
   ClientsRow,
   DeliveryActivityType,
   DeliveryMode,
+  DeliveryShareKind,
   DeliverySourceType,
   DeliveryStatus,
   DeliveryVideosRow,
 } from '../../_lib/db-types'
 import { generatePrivateToken, hashPrivateToken } from '../../_lib/tokens'
 import { isValidWhatsapp, normalizeWhatsapp } from '../../_lib/whatsapp'
+
+/**
+ * Phase 5A — how long a Coordinator temporary share stays valid. Fixed by
+ * product rule (exactly 24 hours from creation); the upper bound only exists so
+ * a caller cannot accidentally turn a temporary share into a long-lived link.
+ */
+export const TEMPORARY_SHARE_TTL_MS = 24 * 60 * 60 * 1000
+export const TEMPORARY_SHARE_MAX_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 export type DeliveryPageContext = Parameters<
   PagesFunction<DeliveryEnv, never, Record<string, unknown>>
@@ -84,6 +93,7 @@ export type DeliveryListItem = {
   client_visible_id: string | null
   archived_at: string | null
   client_label: string | null
+  share_kind: DeliveryShareKind
   clients: { id: string; name: string; whatsapp_number: string } | null
   delivery_videos: {
     id: string
@@ -114,6 +124,7 @@ export type DeliveryDetail = {
   client_visible_id: string | null
   archived_at: string | null
   client_label: string | null
+  share_kind: DeliveryShareKind
   clients: ClientsRow | null
   client_video_slots: { id: string; position: number; title: string; status: string } | null
   delivery_videos: DeliveryVideosRow[]
@@ -146,15 +157,19 @@ export function deliveryClientName(row: {
   return firstNonEmpty(row.clients?.name, row.client_label)
 }
 
-export async function listDeliveries(service: Db): Promise<DeliveryListItem[]> {
+export async function listDeliveries(
+  service: Db,
+  shareKind: DeliveryShareKind = 'client_delivery',
+): Promise<DeliveryListItem[]> {
   const { data } = await service
     .from('deliveries')
     .select(
-      `id, source_type, delivery_mode, status, created_at, token_created_at, confirmed_at,
+      `id, source_type, delivery_mode, share_kind, status, created_at, token_created_at, confirmed_at,
        downloaded_at, download_expires_at, client_visible_id, archived_at, client_label,
        clients ( id, name, whatsapp_number ),
        delivery_videos ( id, item_pos, version, is_active, source_type, original_deleted_at, confirmed_at, download_released_at, downloaded_at, download_expires_at, expired_at )`,
     )
+    .eq('share_kind', shareKind)
     .order('created_at', { ascending: false })
     .limit(200)
     .returns<DeliveryListItem[]>()
@@ -167,14 +182,30 @@ export function activeVideoCount(videos: DeliveryListItem['delivery_videos']): n
   return new Set((videos ?? []).filter((video) => video.is_active).map((video) => video.item_pos)).size
 }
 
+// Can the owner still release the originals for this delivery?
+//
+// The client no longer performs a confirmation handshake, so a delivery waiting
+// to be released sits in `pending` (link never opened) or `preview_viewed` (the
+// client opened it). `confirmed` is still accepted for rows confirmed before the
+// handshake was removed. Everything else is already released, dead, or archived:
+//   download_available / downloaded -> already released
+//   expired                         -> dead
+//
+// This lives here so the admin button and the server-side release gate can
+// never drift apart.
+export function deliveryReleasable(status: DeliveryStatus): boolean {
+  return status === 'pending' || status === 'preview_viewed' || status === 'confirmed'
+}
+
 export async function loadDeliveryDetail(
   service: Db,
   deliveryId: string,
+  shareKind: DeliveryShareKind = 'client_delivery',
 ): Promise<DeliveryDetail | null> {
   const { data } = await service
     .from('deliveries')
     .select(
-      `id, source_type, delivery_mode, status, token_created_at, token_expires_at, confirmed_at,
+      `id, source_type, delivery_mode, share_kind, status, token_created_at, token_expires_at, confirmed_at,
        downloaded_at, download_expires_at, expired_at, client_visible_id, archived_at, created_at,
        client_label,
        clients ( * ),
@@ -183,6 +214,9 @@ export async function loadDeliveryDetail(
        delivery_activity ( id, type, metadata, created_at )`,
     )
     .eq('id', deliveryId)
+    // A Coordinator temporary share is not an Owner Client Delivery and has no
+    // page in /admin/deliveries: the detail loader simply cannot resolve one.
+    .eq('share_kind', shareKind)
     .maybeSingle<DeliveryDetail>()
   if (!data) return null
   if (data.delivery_activity) {
@@ -400,11 +434,22 @@ export type CreateDeliveryParams = {
   mode: string
   /**
    * Optional hard lifetime for the private link, measured from creation.
-   * The Phase 5A mobile Coordinator flow passes 24h. When omitted the link
-   * keeps the classic behaviour (token_expires_at stays NULL = no link expiry),
-   * so the admin form and the desktop delivery workflow are unchanged.
+   * The Phase 5A mobile Coordinator temporary share passes 24h. When omitted
+   * the link keeps the classic behaviour (token_expires_at stays NULL = no link
+   * expiry), so the admin form and the desktop delivery workflow are unchanged.
    */
   linkTtlMs?: number
+  /**
+   * Phase 5A — which of the two products is being created.
+   *
+   *   'client_delivery'  Owner-managed Client Delivery (the desktop wizard).
+   *                      Default, and never carries a forced 24h lifetime.
+   *   'temporary_share'  Coordinator temporary share. The invariants below are
+   *                      enforced HERE, server-side, and again by CHECK
+   *                      constraints in the database: no client record, no
+   *                      client_label, view-only, and a mandatory finite TTL.
+   */
+  shareKind?: DeliveryShareKind
   /** Public base URL used to build the private link. */
   base: string
 }
@@ -422,6 +467,8 @@ export type CreateDeliverySuccess = {
   clientWhatsapp: string
   clientLabel: string
   mode: 'VIEW_ONLY' | 'VIEW_AND_DOWNLOAD'
+  /** Phase 5A — purpose of the created row. */
+  shareKind: DeliveryShareKind
   /** Number of videos the client will see; null for the r2 source. */
   videoCount: number | null
 }
@@ -445,6 +492,35 @@ export type CreateDeliveryResult = CreateDeliverySuccess | CreateDeliveryFailure
 export async function createDelivery(params: CreateDeliveryParams): Promise<CreateDeliveryResult> {
   const { service, actorId, isOwner, portfolio, base } = params
   const source = params.source === 'r2' ? 'r2' : 'portfolio'
+  const shareKind: DeliveryShareKind = params.shareKind === 'temporary_share' ? 'temporary_share' : 'client_delivery'
+
+  //---------------------------------------------------------------------------
+  // Phase 5A — a Coordinator temporary share is a completely different product
+  // from an Owner Client Delivery. Everything about it is forced here rather
+  // than trusted from the request: no client record, no client label,
+  // view-only, public portfolio videos only, and a mandatory 24h lifetime.
+  // The database re-checks the same invariants with CHECK constraints.
+  //---------------------------------------------------------------------------
+  const isTemporaryShare = shareKind === 'temporary_share'
+  if (isTemporaryShare) {
+    if (source !== 'portfolio') {
+      return {
+        ok: false,
+        status: 403,
+        reason: 'forbidden_source',
+        error: 'المشاركة المؤقتة متاحة لفيديوهات المعرض العام فقط.',
+      }
+    }
+    const ttl = params.linkTtlMs
+    if (typeof ttl !== 'number' || !Number.isFinite(ttl) || ttl <= 0 || ttl > TEMPORARY_SHARE_MAX_TTL_MS) {
+      return {
+        ok: false,
+        status: 400,
+        reason: 'invalid_client',
+        error: 'مدة صلاحية الرابط المؤقت غير صالحة.',
+      }
+    }
+  }
 
   if (source === 'r2' && !isOwner) {
     return { ok: false, status: 403, reason: 'forbidden_source', error: 'الفيديو الخاص متاح لصاحب الموقع فقط.' }
@@ -476,7 +552,11 @@ export async function createDelivery(params: CreateDeliveryParams): Promise<Crea
   let clientLabel = ''
   const hasClientInput = Boolean(params.clientId || params.name.trim() || params.whatsapp.trim())
   const canBeClientLess = params.allowClientLess && source === 'portfolio'
-  if (hasClientInput || !canBeClientLess) {
+  if (isTemporaryShare) {
+    // Hard rule: a temporary share NEVER resolves, matches or creates a client
+    // row. Client resolution is skipped entirely, not merely ignored.
+    clientId = null
+  } else if (hasClientInput || !canBeClientLess) {
     const clientResult = await resolveClient(service, actorId, params.clientId || null, params.name, params.whatsapp)
     if (!clientResult.ok) {
       return { ok: false, status: 400, reason: 'invalid_client', error: clientResult.error }
@@ -485,9 +565,8 @@ export async function createDelivery(params: CreateDeliveryParams): Promise<Crea
     clientName = clientResult.client.name
     clientWhatsapp = clientResult.client.whatsapp_number
   } else if (params.clientLabel.trim()) {
-    // The mobile flow submits ONLY a typed name: it is validated and stored on
-    // the delivery. A caller that submits no client information at all (the
-    // admin "إنشاء رابط" modal) keeps a valid client-less delivery.
+    // The admin "إنشاء رابط" modal may still submit a typed name for a
+    // client-less delivery; it is validated and stored on the delivery.
     const label = normalizeClientLabel(params.clientLabel)
     if (!label.ok) return { ok: false, status: 400, reason: 'invalid_client', error: label.error }
     clientLabel = label.value
@@ -496,7 +575,11 @@ export async function createDelivery(params: CreateDeliveryParams): Promise<Crea
   const token = generatePrivateToken()
   const hash = await hashPrivateToken(token)
   const now = new Date().toISOString()
-  const mode: 'VIEW_ONLY' | 'VIEW_AND_DOWNLOAD' = params.mode === 'VIEW_ONLY' ? 'VIEW_ONLY' : 'VIEW_AND_DOWNLOAD'
+  const mode: 'VIEW_ONLY' | 'VIEW_AND_DOWNLOAD' = isTemporaryShare
+    ? 'VIEW_ONLY'
+    : params.mode === 'VIEW_ONLY'
+      ? 'VIEW_ONLY'
+      : 'VIEW_AND_DOWNLOAD'
   // The delivery id is generated here so the stable /p/<identifier>-<secret>
   // link can be computed immediately (identifier = client WhatsApp digits or
   // an id digest for client-less links).
@@ -505,7 +588,8 @@ export async function createDelivery(params: CreateDeliveryParams): Promise<Crea
 
   // A requested link lifetime is stored on the row itself, so every client
   // endpoint (/p/<token>, /preview, /thumb, /download) enforces it server-side
-  // through tokenIsActive() — never in the browser.
+  // through tokenIsActive() — never in the browser. Owner Client Deliveries
+  // pass no TTL and keep their existing expiry semantics unchanged.
   const ttlMs = params.linkTtlMs
   const linkExpiresAt =
     typeof ttlMs === 'number' && Number.isFinite(ttlMs) && ttlMs > 0
@@ -521,6 +605,7 @@ export async function createDelivery(params: CreateDeliveryParams): Promise<Crea
       created_by: actorId,
       source_type: source,
       delivery_mode: mode,
+      share_kind: shareKind,
       client_visible_id: identifier,
       private_token_hash: hash,
       token_created_at: now,
@@ -563,6 +648,7 @@ export async function createDelivery(params: CreateDeliveryParams): Promise<Crea
     clientWhatsapp,
     clientLabel,
     mode,
+    shareKind,
     videoCount: source === 'portfolio' ? portfolioUrls.length : null,
   }
 }

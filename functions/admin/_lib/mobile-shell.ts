@@ -9,7 +9,15 @@ import { escapeHtml, shellIcon } from '../_lib/shell'
 // Desktop admin pages are untouched by this file.
 //============================================================================
 
-export type MobileTab = 'home' | 'portfolio' | 'deliveries' | 'more'
+//============================================================================
+// Phase 5A — the Coordinator app is TEMPORARY VIDEO SHARING, not Client
+// Delivery. There is deliberately no "التسليمات" tab: a Coordinator neither
+// sees nor manages Owner Client Deliveries, and delivery history is not part of
+// this workflow. Bottom navigation is exactly:
+//     الرئيسية | الأعمال | المزيد
+//============================================================================
+
+export type MobileTab = 'home' | 'portfolio' | 'more'
 
 export const MOBILE_APP_NAME = 'Photography Pixel'
 
@@ -37,7 +45,6 @@ export function isMobileUserAgent(userAgent: string | null | undefined): boolean
 const NAV_ITEMS: { tab: MobileTab; label: string; href: string; icon: string }[] = [
   { tab: 'home', label: 'الرئيسية', href: '/admin/m', icon: 'grid' },
   { tab: 'portfolio', label: 'الأعمال', href: '/admin/m/portfolio', icon: 'video' },
-  { tab: 'deliveries', label: 'التسليمات', href: '/admin/m/deliveries', icon: 'package' },
   { tab: 'more', label: 'المزيد', href: '/admin/m/more', icon: 'user' },
 ]
 

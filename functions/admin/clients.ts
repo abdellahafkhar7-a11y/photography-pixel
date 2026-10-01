@@ -6,6 +6,8 @@ import type { Env } from './_lib/env'
 import { renderClients, type ClientsListOptions } from './_lib/clients-views'
 import {
   createClient,
+  deleteClient,
+  inspectClientDeletion,
   listClients,
   loadModelsOptions,
   type ClientProfileInput,
@@ -56,6 +58,9 @@ export const onRequestGet: AdminFunction = async (context) => {
       status,
       models,
       modelId: modelValid ? modelId : '',
+      // Result of a client deletion, surfaced verbatim (escaped in the view).
+      notice: url.searchParams.get('ok') ?? undefined,
+      error: url.searchParams.get('error') ?? undefined,
     }),
   )
   response.headers.set('Cache-Control', 'private, no-store')
@@ -104,6 +109,45 @@ export const onRequestPost: AdminFunction = async (context) => {
     return new Response(null, {
       status: 303,
       headers: { Location: `/admin/clients/${result.client.id}` },
+    })
+  }
+
+  // Owner-only (guarded above by requireOwner). `action=inspect_delete` is what
+  // the confirmation dialog calls to show the real impact before committing, so
+  // the owner is never asked to confirm a blind guess.
+  if (action === 'inspect_delete') {
+    const clientId = formString(form.get('client_id'))
+    const impact = await inspectClientDeletion(service, clientId)
+    return Response.json(
+      impact ?? { error: 'العميل غير موجود.' },
+      { headers: { 'Cache-Control': 'private, no-store' } },
+    )
+  }
+
+  if (action === 'delete') {
+    const clientId = formString(form.get('client_id'))
+    const confirmText = formString(form.get('confirm'))
+    // Explicit confirmation: the owner must retype the client name. This is the
+    // last gate before an irreversible delete.
+    const client = await service.from('clients').select('id, name').eq('id', clientId).maybeSingle<{ id: string; name: string }>()
+    if (!client.data) return html('<p>العميل غير موجود.</p>', 404)
+    if (confirmText.trim() !== client.data.name.trim()) {
+      return html('<p>الاسم المكتوب لا يطابق اسم العميل — تم إلغاء الحذف.</p>', 400)
+    }
+    const result = await deleteClient(service, context.env, clientId)
+    if (!result.ok) {
+      return new Response(null, {
+        status: 303,
+        headers: { Location: `/admin/clients?error=${encodeURIComponent(result.error)}` },
+      })
+    }
+    return new Response(null, {
+      status: 303,
+      headers: {
+        Location: `/admin/clients?ok=${encodeURIComponent(
+          `تم حذف العميل مع ${result.deletedDeliveries} توصيل و${result.deletedVideos} فيديو و${result.deletedR2Keys} ملف خاص.`,
+        )}`,
+      },
     })
   }
 

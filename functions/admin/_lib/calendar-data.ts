@@ -129,6 +129,7 @@ export async function loadCalendarData(service: Db, ym: string): Promise<Calenda
     service
       .from('deliveries')
       .select('id, status, download_expires_at, clients ( name )')
+      .eq('share_kind', 'client_delivery')
       .in('status', ['download_available', 'downloaded'])
       .not('download_expires_at', 'is', null)
       .returns<

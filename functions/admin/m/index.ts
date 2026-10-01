@@ -3,7 +3,6 @@ import { requireSession } from '../_lib/auth'
 import { listNotifications } from '../../_lib/notifications'
 import type { DeliveryEnv } from '../../_lib/env'
 import { serviceFrom } from '../deliveries/_helpers'
-import { loadMobileDeliveries, mobileHomeStats } from './_lib/mobile-data'
 import { renderMobileHome } from './_lib/mobile-views'
 
 //============================================================================
@@ -11,6 +10,10 @@ import { renderMobileHome } from './_lib/mobile-views'
 // The same requireSession() guard as the admin: an inactive or signed-out user
 // is redirected to /admin/login, so a Coordinator can use the app while every
 // Owner-only admin route stays protected by its own role check.
+//
+// The home screen loads NO delivery data on purpose. There is no delivery list,
+// no delivery history and no delivery statistics in the Coordinator app — that
+// is Owner Client Delivery, a different product.
 //============================================================================
 
 type Route = PagesFunction<DeliveryEnv, never, Record<string, unknown>>
@@ -20,22 +23,15 @@ export const onRequestGet: Route = async (context) => {
   if (appUser instanceof Response) return appUser
 
   const service = serviceFrom(context)
-  if (!service) {
-    return new Response('الخدمة غير مهيأة.', { status: 503 })
-  }
-  const [rows, notifications] = await Promise.all([
-    loadMobileDeliveries(service),
-    listNotifications(service, appUser.id, 1),
-  ])
+  if (!service) return new Response('الخدمة غير مهيأة.', { status: 503 })
 
-  return new Response(
-    renderMobileHome(appUser, mobileHomeStats(rows), rows.slice(0, 3), notifications.unread),
-    {
-      headers: {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'private, no-store',
-        'X-Robots-Tag': 'noindex, nofollow',
-      },
+  const notifications = await listNotifications(service, appUser.id, 1)
+
+  return new Response(renderMobileHome(appUser, notifications.unread), {
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'private, no-store',
+      'X-Robots-Tag': 'noindex, nofollow',
     },
-  )
+  })
 }

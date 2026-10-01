@@ -13,7 +13,7 @@ import type {
   DeliveryListItem,
   PortfolioOption,
 } from '../deliveries/_helpers'
-import { ACTIVITY_LABEL, activeVideoCount, deliveryClientName } from '../deliveries/_helpers'
+import { ACTIVITY_LABEL, activeVideoCount, deliveryClientName, deliveryReleasable } from '../deliveries/_helpers'
 
 //============================================================================
 // Phase 4C — Client Delivery admin UI, rendered with the Phase 4A/4B shell.
@@ -529,10 +529,14 @@ export function renderDeliveryDetail(
   if (options.freshToken) {
     shareCard = linkCard(base, options.freshToken, options.identifier ?? detail.client_visible_id, whatsapp)
   } else {
+    // The client no longer confirms, so a delivery awaiting release is normally
+    // `pending` or `preview_viewed`. The shared helper keeps this button and the
+    // server-side release gate in agreement.
+    const releasable = deliveryReleasable(detail.status)
     const releaseAction =
-      isOwner && detail.status === 'confirmed' && !viewOnly && !archivedDelivery
+      isOwner && releasable && !viewOnly && !archivedDelivery
         ? `<form method="post" onsubmit="return confirm('إطلاق التحميل للعميل؟ يبدأ العد التنازلي (3 أيام) عند أول تحميل من العميل.')"><input type="hidden" name="action" value="release"><button class="btn btn-primary" type="submit">${shellIcon('download', 15)} إطلاق التحميل</button></form>`
-        : isOwner && detail.status === 'confirmed' && viewOnly
+        : isOwner && releasable && viewOnly
           ? `<span class="hint">وضع «عرض فقط» — لا يتوفر تحميل للأصل من هذا التوصيل.</span>`
           : ''
     const ownerActions = archivedDelivery

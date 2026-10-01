@@ -5,39 +5,37 @@ import { shareBaseUrl, type DeliveryEnv } from '../../_lib/env'
 import {
   createDelivery,
   loadPortfolioCatalog,
-  normalizeClientLabel,
   serviceFrom,
+  TEMPORARY_SHARE_TTL_MS,
 } from '../deliveries/_helpers'
 import { renderMobileNew } from './_lib/mobile-views'
 
 //============================================================================
-// /admin/m/new — Phase 5A mobile delivery creation.
+// /admin/m/new — Phase 5A COORDINATOR TEMPORARY SHARE creation.
 //
-// This is a PRESENTATION-ONLY endpoint: the flow is the shared
-// createDelivery() from functions/admin/deliveries/_helpers, so the token is
-// generated and hashed, the link is the stable /p/<identifier>-<secret>, the
-// 72h window still starts on the client's first download, and the audit
-// triggers fire exactly as they do for the admin form. There is no second
-// business-logic path here.
+// This is NOT Client Delivery. It creates one throwaway share link and nothing
+// else:
 //
-// The mobile flow asks for a client NAME only. WhatsApp is never required:
-// the name is stored on deliveries.client_label and shown by the admin as the
-// delivery's client name. Coordinator RBAC is inherited from requireSession()
-// (any active team member) — creation itself is not owner-only.
+//   الأعمال -> اختر فيديو -> إنشاء رابط -> نسخ الرابط
+//
+// There is no client name, no client record, no confirmation handshake and no
+// download. The link is view-only and valid for exactly 24 hours, after which
+// it dies on its own without any coordinator cleanup.
+//
+// The row is still written through the shared createDelivery() helper so the
+// token generation/hashing, the stable /p/<identifier>-<secret> link format and
+// the audit triggers are identical to every other private link — but the row is
+// marked share_kind='temporary_share', which is what keeps it out of the Owner
+// Client Delivery system (no client, no /admin/deliveries row, no statistics).
+// There is no second business-logic path here.
+//
+// Coordinator RBAC is inherited from requireSession().
 //============================================================================
 
 type Route = PagesFunction<DeliveryEnv, never, Record<string, unknown>>
 
-/** A single request can never try to build an unbounded delivery. */
+/** A single request can never try to build an unbounded share. */
 const MAX_MOBILE_VIDEOS = 200
-
-/**
- * Phase 5A (real-device refinement) — a Coordinator-created mobile link is
- * time-boxed to 24 hours and view-only. The window is stored on the delivery
- * row (deliveries.token_expires_at) so every client endpoint enforces it
- * server-side; the countdown in the app is cosmetic only.
- */
-const MOBILE_LINK_TTL_MS = 24 * 60 * 60 * 1000
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -46,7 +44,7 @@ function jsonResponse(body: unknown, status = 200): Response {
   })
 }
 
-function page(appUser: Awaited<ReturnType<typeof requireSession>>, state: { error?: string; name?: string; mode?: string }): Response {
+function page(appUser: Awaited<ReturnType<typeof requireSession>>, state: { error?: string }): Response {
   if (appUser instanceof Response) return appUser
   return new Response(renderMobileNew(appUser, state, 0), {
     status: state.error ? 400 : 200,
@@ -72,7 +70,7 @@ export const onRequestPost: Route = async (context) => {
 
   // The app posts JSON; a plain form post (progressive enhancement fallback)
   // is accepted too and re-renders the page with the error inline.
-  let body: { name?: unknown; mode?: unknown; videos?: unknown } = {}
+  let body: { videos?: unknown } = {}
   let isJson = false
   const contentType = context.request.headers.get('content-type') ?? ''
   try {
@@ -81,35 +79,23 @@ export const onRequestPost: Route = async (context) => {
       body = (await context.request.json()) ?? {}
     } else {
       const form = await context.request.formData()
-      body = {
-        name: form.get('name'),
-        mode: form.get('mode'),
-        videos: form.getAll('videos'),
-      }
+      body = { videos: form.getAll('videos') }
     }
   } catch {
     return jsonResponse({ error: 'تعذّر قراءة البيانات.' }, 400)
   }
 
-  const name = typeof body.name === 'string' ? body.name.trim().replace(/\s+/g, ' ') : ''
   const videos = Array.isArray(body.videos)
     ? body.videos.filter((item): item is string => typeof item === 'string')
     : []
 
-  // The mobile client link is always view-only: the client's viewing page must
-  // never expose a download, and VIEW_ONLY is what downloadAllowed() gates on
-  // server-side. A posted mode is ignored rather than trusted.
-  const mode = 'VIEW_ONLY'
+  const failure = (error: string) =>
+    isJson ? jsonResponse({ error }, 400) : page(appUser, { error })
 
-  const failure = (error: string, name2 = name) =>
-    isJson ? jsonResponse({ error }, 400) : page(appUser, { error, name: name2, mode })
-
-  // The name is the ONLY client field in the mobile flow.
-  const label = normalizeClientLabel(name)
-  if (!label.ok) return failure(label.error)
+  // The ONLY inputs are the selected portfolio videos. No name, no phone.
   if (videos.length === 0) return failure('اختر فيديو واحداً على الأقل من الأعمال.')
   // No artificial limit on picking videos, only a sanity ceiling so one request
-  // can never try to build an unbounded delivery.
+  // can never try to build an unbounded share.
   if (videos.length > MAX_MOBILE_VIDEOS) {
     return failure(`الحد الأقصى في الطلب الواحد ${MAX_MOBILE_VIDEOS} فيديو.`)
   }
@@ -125,16 +111,18 @@ export const onRequestPost: Route = async (context) => {
     clientId: '',
     name: '',
     whatsapp: '',
-    clientLabel: label.value,
+    clientLabel: '',
     allowClientLess: true,
-    mode,
-    linkTtlMs: MOBILE_LINK_TTL_MS,
+    mode: 'VIEW_ONLY',
+    // Marked as a Coordinator temporary share, not an Owner Client Delivery.
+    shareKind: 'temporary_share',
+    linkTtlMs: TEMPORARY_SHARE_TTL_MS,
     base: shareBaseUrl(context.env, context.request),
   })
 
   if (!result.ok) {
     if (isJson) return jsonResponse({ error: result.error, reason: result.reason }, result.status)
-    return page(appUser, { error: result.error, name, mode })
+    return page(appUser, { error: result.error })
   }
 
   return jsonResponse({
@@ -142,8 +130,8 @@ export const onRequestPost: Route = async (context) => {
     deliveryId: result.deliveryId,
     link: result.link,
     identifier: result.identifier,
-    clientName: result.clientLabel || result.clientName,
     mode: result.mode,
+    shareKind: result.shareKind,
     videoCount: result.videoCount,
     createdAt: new Date().toISOString(),
     // The exact server-computed instant the link stops working.
