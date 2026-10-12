@@ -164,37 +164,11 @@ function applyConfigToStaticPages() {
 // Stores the in-flight Promise so concurrent callers share one fetch.
 const categoryUrlCache = {};
 
-// Set of unavailable Bamboo video IDs (loaded from data/video-status.json)
-let unavailableVideoIds = null;
-
-async function loadVideoStatus() {
-  if (unavailableVideoIds !== null) return;
-  unavailableVideoIds = new Set();
-  try {
-    const response = await fetch('/data/video-status.json');
-    if (!response.ok) return;
-    const data = await response.json();
-    if (Array.isArray(data.unavailable)) {
-      data.unavailable.forEach(id => unavailableVideoIds.add(id));
-    }
-  } catch {
-    // If file missing or invalid, treat all videos as available
-  }
-}
-
-// Extract Bamboo video ID from an embed URL
-function getBambooVideoId(url) {
-  var match = url.match(/[?&]id=([^&]+)/);
-  return match ? match[1] : null;
-}
-
 // Fetch a TXT file and return an array of validated, deduplicated URLs
 function fetchCategoryUrls(txtFile) {
   if (categoryUrlCache[txtFile]) return categoryUrlCache[txtFile];
 
   const loadPromise = (async () => {
-    await loadVideoStatus();
-
     try {
       const response = await fetch('/data/' + txtFile);
       if (!response.ok) return [];
@@ -209,12 +183,15 @@ function fetchCategoryUrls(txtFile) {
       for (const line of cleaned.split(/\r?\n/)) {
         const url = line.trim();
         if (!url) continue;
-        if (!/^https:\/\//.test(url)) continue;
+        if (isWistiaEntry(url)) {
+          if (!isValidWistiaMediaId(getWistiaMediaId(url))) {
+            console.warn('[Wistia] Skipping invalid media entry in ' + txtFile + ': ' + url);
+            continue;
+          }
+        } else if (!/^https:\/\//.test(url)) {
+          continue;
+        }
         if (seen.has(url)) continue;
-
-        // Filter out unavailable/processing videos
-        var videoId = getBambooVideoId(url);
-        if (videoId && unavailableVideoIds.has(videoId)) continue;
 
         seen.add(url);
         urls.push(url);
@@ -280,16 +257,330 @@ function hourlyShuffle(array) {
   return result;
 }
 
-function createBambooCard(url) {
+function isWistiaEntry(value) {
+  return /^[^|\s]+\|wistia$/i.test(value);
+}
+
+function getWistiaMediaId(value) {
+  if (!isWistiaEntry(value)) return null;
+  return value.split('|')[0].trim();
+}
+
+function isValidWistiaMediaId(mediaId) {
+  return typeof mediaId === 'string' && /^[A-Za-z0-9]+$/.test(mediaId);
+}
+
+let wistiaPlayerReady = null;
+const wistiaMediaReady = new Map();
+
+function loadWistiaPlayer(mediaId) {
+  if (!wistiaPlayerReady) {
+    wistiaPlayerReady = new Promise((resolve, reject) => {
+      if (customElements.get('wistia-player')) {
+        resolve();
+        return;
+      }
+
+      const existing = document.querySelector(
+        'script[src="https://fast.wistia.com/player.js"]'
+      );
+
+      if (existing) {
+        existing.addEventListener('load', resolve, { once: true });
+        existing.addEventListener('error', () => {
+          reject(new Error('Could not load https://fast.wistia.com/player.js'));
+        }, { once: true });
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = 'https://fast.wistia.com/player.js';
+      script.async = true;
+
+      script.onload = resolve;
+      script.onerror = () => {
+        reject(new Error('Could not load https://fast.wistia.com/player.js'));
+      };
+
+      document.head.appendChild(script);
+    });
+
+    wistiaPlayerReady.catch(err => {
+      console.error('[Wistia] The Aurora player script could not be loaded:', err);
+    });
+  }
+
+  if (!wistiaMediaReady.has(mediaId)) {
+    const promise = wistiaPlayerReady.then(() => {
+      return new Promise((resolve, reject) => {
+        const src = 'https://fast.wistia.com/embed/' + mediaId + '.js';
+
+        const existing = document.querySelector(
+          'script[src="' + src + '"]'
+        );
+
+        if (existing) {
+          resolve();
+          return;
+        }
+
+        const script = document.createElement('script');
+        script.src = src;
+        script.async = true;
+        script.type = 'module';
+
+        script.onload = resolve;
+        script.onerror = () => {
+          reject(new Error('Could not load ' + src));
+        };
+
+        document.head.appendChild(script);
+      });
+    });
+
+    promise.catch(err => {
+      console.error('[Wistia] Failed to initialize media "' + mediaId + '":', err);
+    });
+
+    wistiaMediaReady.set(mediaId, promise);
+  }
+
+  return wistiaMediaReady.get(mediaId);
+}
+
+// ============================================
+// WISTIA PLAYER HARDENING
+// Keeps play / pause / seek fully usable while blocking:
+// - fullscreen (button, keyboard shortcut, double click, direct API calls)
+// - clicks on the Wistia logo / branding at the bottom of the player
+// - any external Wistia navigation coming out of the player
+// All guards are scoped strictly to <wistia-player> elements, so the rest
+// of the website (and any non-Wistia embed) behaves exactly as before.
+// ============================================
+
+var wistiaRestrictionsInstalled = false;
+var hardenedWistiaPlayers = new WeakSet();
+
+function isInsideWistiaPlayer(node) {
+  try {
+    var current = node;
+    for (var i = 0; i < 12 && current; i++) {
+      if (current.nodeType === 1 && current.localName === 'wistia-player') return true;
+      var root = typeof current.getRootNode === 'function' ? current.getRootNode() : null;
+      if (root && root !== current && root.host) {
+        current = root.host;
+        continue;
+      }
+      current = current.parentNode;
+    }
+  } catch (err) {
+    return false;
+  }
+  return false;
+}
+
+function wistiaEventPath(event) {
+  try {
+    if (typeof event.composedPath === 'function') {
+      var path = event.composedPath();
+      if (path && path.length) return path;
+    }
+  } catch (err) {}
+  return [event.target];
+}
+
+function wistiaEventInvolvesPlayer(event) {
+  var path = wistiaEventPath(event);
+  for (var i = 0; i < path.length; i++) {
+    var node = path[i];
+    if (node && node.nodeType === 1 && node.localName === 'wistia-player') return true;
+  }
+  return isInsideWistiaPlayer(event.target);
+}
+
+// True when the event's real (composed) target path reaches one of the
+// restricted areas: any link, the fullscreen control, or the Wistia logo.
+function wistiaEventHitsRestrictedTarget(event) {
+  var path = wistiaEventPath(event);
+  for (var i = 0; i < path.length; i++) {
+    var node = path[i];
+    if (!node || node.nodeType !== 1) continue;
+    if (node.localName === 'a' && (node.getAttribute('href') || node.getAttribute('target'))) return true;
+    var label = '';
+    try {
+      label = (node.getAttribute && (node.getAttribute('aria-label') || node.getAttribute('title'))) || '';
+    } catch (err) {}
+    if (label && label.toLowerCase().indexOf('fullscreen') !== -1) return true;
+    var cls = typeof node.className === 'string' ? node.className : '';
+    if (cls.indexOf('wistia-logo') !== -1) return true;
+  }
+  return false;
+}
+
+function guardRestrictedWistiaEvent(event) {
+  try {
+    if (!wistiaEventInvolvesPlayer(event)) return;
+    if (!wistiaEventHitsRestrictedTarget(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  } catch (err) {}
+}
+
+function wistiaFullscreenError() {
+  try {
+    return new DOMException('Fullscreen is disabled for this player.', 'InvalidStateError');
+  } catch (err) {
+    var error = new Error('Fullscreen is disabled for this player.');
+    error.name = 'InvalidStateError';
+    return error;
+  }
+}
+
+function installWistiaRestrictions() {
+  if (wistiaRestrictionsInstalled) return;
+  wistiaRestrictionsInstalled = true;
+
+  // --- Fullscreen API: nothing inside a Wistia player may go fullscreen ---
+  var elementMethods = [
+    'requestFullscreen',
+    'webkitRequestFullscreen',
+    'webkitEnterFullScreen',
+    'msRequestFullscreen',
+    'mozRequestFullScreen'
+  ];
+  var videoMethods = ['webkitEnterFullscreen', 'webkitEnterFullScreen'];
+  var targets = [];
+  if (typeof Element !== 'undefined') targets.push({ proto: Element.prototype, methods: elementMethods });
+  if (typeof HTMLVideoElement !== 'undefined') targets.push({ proto: HTMLVideoElement.prototype, methods: videoMethods });
+
+  targets.forEach(function (target) {
+    target.methods.forEach(function (method) {
+      var original = target.proto[method];
+      if (typeof original !== 'function') return;
+      try {
+        Object.defineProperty(target.proto, method, {
+          configurable: true,
+          writable: true,
+          value: function () {
+            if (isInsideWistiaPlayer(this)) {
+              var rejection = Promise.reject(wistiaFullscreenError());
+              rejection.catch(function () {});
+              return rejection;
+            }
+            return original.apply(this, arguments);
+          }
+        });
+      } catch (err) {}
+    });
+  });
+
+  // --- Restricted clicks (Wistia logo, links, fullscreen button) ---
+  ['click', 'auxclick', 'contextmenu', 'dragstart'].forEach(function (type) {
+    window.addEventListener(type, guardRestrictedWistiaEvent, true);
+  });
+
+  // Double click inside the player would otherwise toggle fullscreen
+  window.addEventListener('dblclick', function (event) {
+    try {
+      if (!wistiaEventInvolvesPlayer(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    } catch (err) {}
+  }, true);
+
+  // "f" fullscreen shortcut, only while the focus is inside the player
+  window.addEventListener('keydown', function (event) {
+    try {
+      if (!wistiaEventInvolvesPlayer(event)) return;
+      if (String(event.key || '').toLowerCase() !== 'f') return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    } catch (err) {}
+  }, true);
+}
+
+function hardenWistiaPlayer(host) {
+  if (!host || host.nodeType !== 1 || host.localName !== 'wistia-player') return;
+  if (hardenedWistiaPlayers.has(host)) return;
+  hardenedWistiaPlayers.add(host);
+  installWistiaRestrictions();
+}
+
+// Lazy Wistia mounting. The <wistia-player> element is only inserted into the
+// DOM once its card is close to the viewport, so off-screen cards do not
+// download the player bundle, the per-media module or the poster image.
+// Once mounted the card behaves exactly like a normal Wistia card.
+var WISTIA_LAZY_ROOT_MARGIN = '600px';
+var wistiaLazyObserver = null;
+
+function mountWistiaSlot(slot) {
+  if (!slot || slot.getAttribute('data-wistia-mounted') === '1') return;
+  var mediaId = slot.getAttribute('data-wistia-media-id');
+  if (!isValidWistiaMediaId(mediaId)) return;
+  slot.setAttribute('data-wistia-mounted', '1');
+  slot.innerHTML =
+    '<wistia-player media-id="' + mediaId + '" aspect="0.5625" ' +
+    'style="display:block;width:100%;height:100%;"></wistia-player>';
+  hardenWistiaPlayer(slot.firstChild);
+  loadWistiaPlayer(mediaId);
+}
+
+function observeWistiaSlot(slot) {
+  if (!slot) return;
+  if (typeof IntersectionObserver === 'undefined') {
+    mountWistiaSlot(slot);
+    return;
+  }
+  if (!wistiaLazyObserver) {
+    wistiaLazyObserver = new IntersectionObserver(function (entries, observer) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        observer.unobserve(entry.target);
+        mountWistiaSlot(entry.target);
+      });
+    }, { root: null, rootMargin: WISTIA_LAZY_ROOT_MARGIN, threshold: 0 });
+  }
+  wistiaLazyObserver.observe(slot);
+}
+
+function createReelCard(value) {
   var card = document.createElement('article');
   card.className = 'reel-card';
+
+  if (isWistiaEntry(value)) {
+    var mediaId = getWistiaMediaId(value);
+    var validMediaId = isValidWistiaMediaId(mediaId);
+
+    if (!validMediaId) {
+      console.error('[Wistia] Invalid media ID in video list: "' + value + '"');
+    }
+
+    card.innerHTML =
+      '<div style="width:100%;aspect-ratio:9/16;position:relative;z-index:1;background:#000;overflow:hidden;border-radius:inherit;">' +
+        (validMediaId
+          ? '<div class="wistia-lazy-slot" data-wistia-media-id="' + mediaId + '" style="display:block;width:100%;height:100%;"></div>' +
+            '<div class="wistia-branding-guard" aria-hidden="true"></div>'
+          : '') +
+      '</div>';
+
+    if (validMediaId) {
+      observeWistiaSlot(card.querySelector('.wistia-lazy-slot'));
+    }
+
+    return card;
+  }
+
   card.innerHTML =
     '<div style="width:100%;aspect-ratio:9/16;position:relative;z-index:1;background:#000;overflow:hidden;border-radius:inherit;">' +
-      '<iframe src="' + url + '" ' +
+      '<iframe src="' + value + '" ' +
         'style="position:absolute;left:0;top:0;width:100%;height:100%;border:0;" ' +
         'frameborder="0" allow="autoplay; encrypted-media" loading="lazy"></iframe>' +
       '<div class="reel-card-fullscreen-guard" aria-hidden="true"></div>' +
     '</div>';
+
   return card;
 }
 
@@ -301,7 +592,7 @@ function renderVideoCards(urls, containerId, slug, limit) {
   const fragment = document.createDocumentFragment();
 
   list.forEach(url => {
-    const card = createBambooCard(url);
+    const card = createReelCard(url);
     fragment.appendChild(card);
 
     card.classList.add('reveal-scale');
@@ -638,7 +929,7 @@ function renderSearchResults(query) {
   const fragment = document.createDocumentFragment();
 
   results.forEach(item => {
-    const card = createBambooCard(item.video);
+    const card = createReelCard(item.video);
     fragment.appendChild(card);
 
     card.classList.add('reveal-scale');
@@ -915,8 +1206,8 @@ function scrollToTopInstant() {
   root.style.scrollBehavior = prevBehavior;
 }
 
-// Stop video playback inside a page-view that is being hidden. Bamboo
-// iframes are cross-origin and cannot be paused from the parent page, so
+// Stop video playback inside a page-view that is being hidden. Cross-origin
+// iframes cannot be paused from the parent page, so
 // the only reliable way to stop them (and any ghost audio) is to re-navigate
 // the iframe to its own src — the player reloads paused. Iframes that were
 // still lazily deferred stay deferred (no extra load).
@@ -925,6 +1216,14 @@ function resetPageVideos(pageEl) {
   pageEl.querySelectorAll('.reel-card iframe').forEach(iframe => {
     const src = iframe.getAttribute('src');
     if (src) iframe.src = src;
+  });
+  pageEl.querySelectorAll('.reel-card wistia-player').forEach(player => {
+    if (typeof player.pause !== 'function') return;
+    try {
+      player.pause();
+    } catch (err) {
+      console.warn('[Wistia] Could not pause player:', err);
+    }
   });
 }
 
@@ -1035,36 +1334,291 @@ navItems.forEach(item => {
 });
 
 // ============================================
-// MODEL BOOKING - WHATSAPP MESSAGE
-// Event delegation for dynamic cards
+// MODEL BOOKING — REQUEST FORM → WHATSAPP
+// Opens a polished booking form, validates the
+// required fields, then hands a structured Arabic
+// request to WhatsApp. Event delegation covers the
+// dynamically rendered model cards.
 // ============================================
-document.addEventListener('click', function(e) {
-  const btn = e.target.closest('.model-book-btn');
-  if (!btn) return;
+(function() {
+  'use strict';
 
-  e.preventDefault();
+  const WA_NUMBER = '212663493003';
 
-  const card = btn.closest('.model-card');
-  if (!card) return;
+  const modal = document.getElementById('booking-modal');
+  const form = document.getElementById('booking-form');
+  if (!modal || !form) return;
 
-  const name = card.dataset.modelName || '—';
-  const city = card.dataset.modelCity || '—';
-  const photo = card.dataset.modelPhoto || '';
+  const closeBtn = document.getElementById('booking-close');
+  const cancelBtn = document.getElementById('booking-cancel');
+  const submitBtn = document.getElementById('booking-submit');
+  const successEl = document.getElementById('booking-success');
 
-  let msg = 'السلام عليكم،\n\n';
-  msg += 'أرغب في حجز هذا المودل.\n\n';
-  msg += 'الاسم: ' + name + '\n';
-  msg += 'المدينة: ' + city + '\n';
-  msg += 'نوع المشروع: \n';
-  msg += 'تاريخ التصوير: \n';
-  if (photo) {
-    msg += '\nصورة المودل: ' + photo + '\n';
+  const modelImg = document.getElementById('booking-model-img');
+  const modelImgWrap = modelImg ? modelImg.closest('.booking-model-photo') : null;
+  const modelNameEl = document.getElementById('booking-model-name');
+  const modelCityEl = document.getElementById('booking-model-city');
+
+  const cityInput = document.getElementById('booking-city');
+  const nameInput = document.getElementById('booking-name');
+  const phoneInput = document.getElementById('booking-phone');
+  const dateInput = document.getElementById('booking-date');
+  const detailsInput = document.getElementById('booking-details');
+
+  const ERROR_MESSAGES = {
+    projectType: 'المرجو اختيار نوع المشروع.',
+    shootingLocation: 'المرجو اختيار مكان التصوير.',
+    videoCount: 'المرجو اختيار عدد الفيديوهات.',
+    customerCity: 'المرجو إدخال مدينة التصوير.',
+    customerName: 'المرجو إدخال الاسم الكامل.',
+    customerPhone: 'المرجو إدخال رقم الهاتف.'
+  };
+
+  let lastFocused = null;
+  let submitting = false;
+
+  // ── Validation helpers ─────────────────────
+  function fieldEl(name) {
+    return form.querySelector('[data-field="' + name + '"]');
   }
-  msg += '\nشكراً.';
 
-  const waUrl = 'https://wa.me/212663493003?text=' + encodeURIComponent(msg);
-  window.open(waUrl, '_blank', 'noopener');
-});
+  function setFieldError(name, message) {
+    const field = fieldEl(name);
+    const errorEl = form.querySelector('[data-error-for="' + name + '"]');
+    if (field) field.classList.add('has-error');
+    if (errorEl) {
+      errorEl.textContent = message || '';
+      errorEl.classList.add('show');
+    }
+  }
+
+  function clearFieldError(name) {
+    const field = fieldEl(name);
+    const errorEl = form.querySelector('[data-error-for="' + name + '"]');
+    if (field) field.classList.remove('has-error');
+    if (errorEl) {
+      errorEl.textContent = '';
+      errorEl.classList.remove('show');
+    }
+  }
+
+  function clearAllErrors() {
+    form.querySelectorAll('.booking-error').forEach(el => {
+      el.textContent = '';
+      el.classList.remove('show');
+    });
+    form.querySelectorAll('.booking-field.has-error').forEach(el => {
+      el.classList.remove('has-error');
+    });
+  }
+
+  function radioValue(name) {
+    const checked = form.querySelector('input[name="' + name + '"]:checked');
+    return checked ? checked.value : '';
+  }
+
+  // Accepts Moroccan numbers entered as +212XXXXXXXXX, 00212XXXXXXXXX,
+  // 212XXXXXXXXX, 0XXXXXXXXX or bare XXXXXXXXX (mobile 6/7, landline 5).
+  function isValidMoroccanPhone(raw) {
+    const p = String(raw || '').replace(/[\s\-().]/g, '');
+    if (!p) return false;
+    return /^(?:\+212|00212|212)[5-7]\d{8}$/.test(p) ||
+           /^0[5-7]\d{8}$/.test(p) ||
+           /^[5-7]\d{8}$/.test(p);
+  }
+
+  function formatDate(value) {
+    if (!value) return 'لم يحدد بعد';
+    const parts = String(value).split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
+      return parts[2] + '/' + parts[1] + '/' + parts[0];
+    }
+    return value;
+  }
+
+  function validate() {
+    clearAllErrors();
+
+    const values = {
+      projectType: radioValue('projectType'),
+      shootingLocation: radioValue('shootingLocation'),
+      videoCount: radioValue('videoCount'),
+      customerCity: cityInput ? cityInput.value.trim() : '',
+      customerName: nameInput ? nameInput.value.trim() : '',
+      customerPhone: phoneInput ? phoneInput.value.trim() : ''
+    };
+
+    let firstInvalid = null;
+
+    Object.keys(ERROR_MESSAGES).forEach(name => {
+      if (!String(values[name] || '').trim()) {
+        setFieldError(name, ERROR_MESSAGES[name]);
+        if (!firstInvalid) firstInvalid = name;
+      }
+    });
+
+    if (phoneInput && phoneInput.value.trim() && !isValidMoroccanPhone(phoneInput.value)) {
+      setFieldError('customerPhone', 'المرجو إدخال رقم هاتف مغربي صحيح (مثال: 0663493003).');
+      if (!firstInvalid) firstInvalid = 'customerPhone';
+    }
+
+    if (firstInvalid) {
+      const field = fieldEl(firstInvalid);
+      if (field) {
+        const focusable = field.querySelector('input:not([type="hidden"]), textarea, select');
+        if (focusable && typeof focusable.focus === 'function') {
+          focusable.focus({ preventScroll: true });
+        }
+        field.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+      return false;
+    }
+
+    return true;
+  }
+
+  // ── WhatsApp message ───────────────────────
+  function buildMessage() {
+    const details = (detailsInput && detailsInput.value.trim()) || 'لا توجد';
+    const lines = [
+      'السلام عليكم، عندنا طلب حجز من الموقع 📩',
+      '',
+      '📸 *Photography Pixel — طلب حجز مودل*',
+      '',
+      '👩 المودل: ' + (modelNameEl.textContent || '—'),
+      '🎬 نوع التصوير: ' + radioValue('projectType'),
+      '📦 عدد الفيديوهات: ' + radioValue('videoCount'),
+      '📍 مكان التصوير: ' + radioValue('shootingLocation'),
+      '🏙️ مدينة التصوير: ' + cityInput.value.trim(),
+      '📅 التاريخ المقترح: ' + formatDate(dateInput ? dateInput.value : ''),
+      '',
+      '👤 الاسم الكامل: ' + nameInput.value.trim(),
+      '📞 رقم الهاتف: ' + phoneInput.value.trim(),
+      '',
+      '📝 تفاصيل المشروع:',
+      details,
+      '',
+      'المرجو التواصل مع الزبون لتأكيد التفاصيل والتوفر.',
+      '',
+      '*ملاحظة: هذا طلب حجز أولي، وليس تأكيداً نهائياً للحجز.*'
+    ];
+    return lines.join('\n');
+  }
+
+  // ── Modal open / close ─────────────────────
+  function openModal(card) {
+    const name = card.dataset.modelName || '';
+    const city = card.dataset.modelCity || '';
+    const photo = card.dataset.modelPhoto || '';
+
+    modelNameEl.textContent = name || '—';
+    modelCityEl.textContent = city || '';
+
+    if (modelImg) {
+      if (photo) {
+        modelImg.src = photo;
+        modelImg.alt = name;
+        if (modelImgWrap) modelImgWrap.classList.remove('is-empty');
+      } else {
+        modelImg.removeAttribute('src');
+        modelImg.alt = '';
+        if (modelImgWrap) modelImgWrap.classList.add('is-empty');
+      }
+    }
+
+    form.reset();
+    clearAllErrors();
+    if (successEl) successEl.hidden = true;
+    submitting = false;
+    submitBtn.disabled = false;
+    submitBtn.classList.remove('is-loading');
+
+    lastFocused = document.activeElement;
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+
+    setTimeout(() => {
+      const first = form.querySelector('input[name="projectType"]');
+      if (first) first.focus({ preventScroll: true });
+    }, 60);
+  }
+
+  function closeModal() {
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('modal-open');
+
+    if (lastFocused && typeof lastFocused.focus === 'function') {
+      lastFocused.focus({ preventScroll: true });
+    }
+  }
+
+  // ── Events ─────────────────────────────────
+  document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.model-book-btn');
+    if (!btn) return;
+
+    const card = btn.closest('.model-card');
+    if (!card) return;
+
+    e.preventDefault();
+    openModal(card);
+  });
+
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+
+  modal.addEventListener('click', function(e) {
+    if (e.target.closest('[data-booking-close]')) closeModal();
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && modal.classList.contains('active')) {
+      closeModal();
+    }
+  });
+
+  // Live-clear field errors once the visitor starts fixing them
+  function handleFieldUpdate(e) {
+    const field = e.target.closest('[data-field]');
+    if (field && field.classList.contains('has-error')) {
+      clearFieldError(field.dataset.field);
+    }
+  }
+  form.addEventListener('input', handleFieldUpdate);
+  form.addEventListener('change', handleFieldUpdate);
+
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    if (submitting) return;
+    if (!validate()) return;
+
+    submitting = true;
+    submitBtn.disabled = true;
+    submitBtn.classList.add('is-loading');
+    if (successEl) successEl.hidden = true;
+
+    const url = 'https://wa.me/' + WA_NUMBER + '?text=' + encodeURIComponent(buildMessage());
+
+    // Open synchronously inside the user gesture so mobile browsers
+    // don't treat it as a blocked popup.
+    try {
+      window.open(url, '_blank', 'noopener');
+    } catch (err) {
+      window.location.href = url;
+    }
+
+    if (successEl) successEl.hidden = false;
+
+    setTimeout(function() {
+      submitting = false;
+      submitBtn.disabled = false;
+      submitBtn.classList.remove('is-loading');
+    }, 900);
+  });
+})();
+
 
 // ============================================
 // DYNAMIC MODELS LOADER

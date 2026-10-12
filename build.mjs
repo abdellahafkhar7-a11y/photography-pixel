@@ -48,11 +48,25 @@ function readVideoUrls(txtFile) {
     const seen = new Set();
     const urls = [];
     for (const line of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
-      const url = line.trim();
-      if (!url || !url.startsWith('https://')) continue;
-      if (seen.has(url)) continue;
-      seen.add(url);
-      urls.push(url);
+      const entry = line.trim();
+      if (!entry || entry.startsWith('#')) continue;
+
+      // Wistia is the portfolio's only video provider. A Wistia entry is
+      // written as `MEDIA_ID|wistia` and maps to the official player URL.
+      const wistia = /^([^|\s]+)\|wistia$/i.exec(entry);
+      let embedUrl = '';
+      if (wistia) {
+        if (!/^[A-Za-z0-9]+$/.test(wistia[1])) continue;
+        embedUrl = `https://fast.wistia.net/embed/iframe/${wistia[1]}`;
+      } else if (entry.startsWith('https://')) {
+        embedUrl = entry;
+      } else {
+        continue;
+      }
+
+      if (seen.has(embedUrl)) continue;
+      seen.add(embedUrl);
+      urls.push(embedUrl);
     }
     return urls;
   } catch {
@@ -63,7 +77,7 @@ function readVideoUrls(txtFile) {
 function generateVideoSchema(videos, categoryLabel) {
   if (!videos || videos.length === 0) return null;
   // Honest, valid VideoObject entries: no invented titles, thumbnails,
-  // dates, durations or direct-video URLs. Bamboo embed URLs are exposed
+  // dates, durations or direct-video URLs. Provider player URLs are exposed
   // only as embedUrl (player URL), never as contentUrl/encodingFormat.
   const graph = videos.map((url, i) => {
     return {
