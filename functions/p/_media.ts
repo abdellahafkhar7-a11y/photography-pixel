@@ -40,6 +40,7 @@ export async function streamObject(
 
   const headers = new Headers()
   headers.set('Content-Type', object.httpMetadata?.contentType ?? contentType)
+  headers.set('X-Content-Type-Options', 'nosniff')
   headers.set('Accept-Ranges', 'bytes')
   headers.set('Content-Length', String(object.size))
   headers.set('Cache-Control', 'private, no-store')
@@ -51,6 +52,10 @@ export async function streamObject(
 export function noStoreResponse(status: number, message = 'Not found'): Response {
   return new Response(message, {
     status,
-    headers: { 'Cache-Control': 'private, no-store', 'X-Robots-Tag': 'noindex' },
+    headers: {
+      'Cache-Control': 'private, no-store',
+      'X-Robots-Tag': 'noindex',
+      'X-Content-Type-Options': 'nosniff',
+    },
   })
 }

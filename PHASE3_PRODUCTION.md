@@ -61,9 +61,10 @@ value-less `.env.example` is committed.
   delivery_created, version_created, link_opened, preview_viewed, video_confirmed,
   download_started, delivery_expired, original_deleted.
   Second run idempotent: `{"claimed":0,"originalsDeleted":0}`.
-- Triggered the deployed cleanup WORKER over HTTPS -> it called the endpoint with its
-  own secrets and got the rate-limit guard (`too_soon`), proving the full cron chain
-  (execution path) works without waiting for 03:00 UTC.
+- Triggered the deployed cleanup WORKER over HTTPS -> it authenticated to the
+  endpoint with its own `CLEANUP_SECRET` and ran, proving the full cron chain
+  (execution path) works without waiting for 03:00 UTC. (The endpoint has no
+  timestamp/rate-limit handshake — authentication alone authorizes a run.)
 - RBAC: coordinator login works, sees no `r2` source option, upload attempt -> 403.
 - Guard rails: `GET /__cleanup` 405; no secret values appear in any admin/client HTML.
 
@@ -99,7 +100,7 @@ download returns a 302 to a 200-signed R2 URL before keeping it enabled.
 ## 6. Ops / rollback
 
 - Manual cleanup: `POST https://photographypixell.com/__cleanup` with
-  `x-cleanup-secret: <CLEANUP_SECRET>` and `x-cleanup-since: <epoch-ms >30s in past>`.
+  `x-cleanup-secret: <CLEANUP_SECRET>` (or a signed-in owner session). `GET` → 405.
 - Cron: worker `photography-pixel-cleanup`, schedule `0 3 * * *`.
 - Verify config: `GET /accounts/{acct}/pages/projects/photographyportfolio` (masked).
 - Rollback: pin Pages back to the previous deployment or revert `main` and push.

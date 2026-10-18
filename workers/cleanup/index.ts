@@ -27,7 +27,6 @@ async function runCleanup(env: Env): Promise<{ ok: boolean; error?: string; resu
   }
   const headers: Record<string, string> = {
     'x-cleanup-secret': secret,
-    'x-cleanup-since': String(Date.now()),
   }
   try {
     const response = await fetch(endpoint, { method: 'POST', headers })

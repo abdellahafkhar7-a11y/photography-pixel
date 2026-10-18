@@ -5,6 +5,7 @@ import { siteUrl, type DeliveryEnv } from '../../../_lib/env'
 import { recordActivity } from '../../../_lib/activities'
 import { MAX_UPLOAD_BYTES, UPLOAD_PART_SIZE, maxUploadParts, originalKey } from '../../../_lib/r2'
 import { detectMime, displayName, safeDecode } from '../../../_lib/upload-meta'
+import { readUploadHead, verifyVideoSignature } from '../../../_lib/upload-signature'
 import { renderDeliveryUpload } from '../../_lib/delivery-views'
 import type { AppUserRow } from '../../_lib/types'
 import {
@@ -401,6 +402,11 @@ async function handleComplete(
   const filename = displayName(body.filename ?? (key.split('/').pop() ?? 'original.mp4'))
   const mime = object?.httpMetadata?.contentType ?? 'video/mp4'
   const objectSize = object?.size ?? size
+  const head = await readUploadHead(bucket, key)
+  if (!verifyVideoSignature(mime, head ?? new Uint8Array()).ok) {
+    await bucket.delete(key).catch(() => undefined)
+    return jsonError('محتوى الملف لا يطابق صيغة الفيديو المعلنة.')
+  }
   return finalizeUpload(service, appUser, base, detail, key, filename, mime, objectSize, item)
 }
 
@@ -452,6 +458,11 @@ async function handleStream(
     })
   } catch {
     return jsonError('تعذّر تخزين الملف.', 500)
+  }
+  const head = await readUploadHead(bucket, key)
+  if (!verifyVideoSignature(mime, head ?? new Uint8Array()).ok) {
+    await bucket.delete(key).catch(() => undefined)
+    return jsonError('محتوى الملف لا يطابق صيغة الفيديو المعلنة.')
   }
   return finalizeUpload(service, appUser, base, detail, key, filename, mime, rawSize, item)
 }

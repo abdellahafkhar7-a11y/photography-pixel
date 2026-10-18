@@ -1342,7 +1342,7 @@ function activityTab(detail: ProjectDetail): string {
       return `
       <div class="activity-row">
         <span class="a-ico">${shellIcon(icon, 16)}</span>
-        <div class="a-body"><div class="a-label">${escapeHtml(label)}</div>${meta ? `<div class="a-meta">${meta}</div>` : ''}</div>
+        <div class="a-body"><div class="a-label">${escapeHtml(label)}</div>${meta ? `<div class="a-meta">${escapeHtml(meta)}</div>` : ''}</div>
         <span class="a-time">${formatTime(item.created_at)}</span>
       </div>`
     })

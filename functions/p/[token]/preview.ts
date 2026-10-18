@@ -47,8 +47,20 @@ export const onRequestGet: Route = async (context) => {
     return Response.redirect(target, 302)
   }
 
-  const key = video?.r2_preview_key ?? video?.r2_original_key
+  // Playback stream for the client player. This build has NO separate
+  // watermarked/transcoded derivative: the media the client watches IS the
+  // delivery's private source file, streamed through this authorized endpoint
+  // (token + status + active-item gated, `private, no-store`, no attachment).
+  // VIEW_ONLY means "no download offered", NOT "the original bytes are never
+  // transmitted" — in-browser playback requires the media itself. The only
+  // watermark is the client-side CSS overlay, which is not burned into the file.
+  const key = video?.r2_original_key
   if (!key || !context.env.BUCKET) return noStoreResponse(404)
-  const streamed = await streamObject(context.env.BUCKET, key, context.request, 'video/mp4')
+  const streamed = await streamObject(
+    context.env.BUCKET,
+    key,
+    context.request,
+    video?.mime_type ?? 'video/mp4',
+  )
   return streamed ?? noStoreResponse(404)
 }

@@ -82,8 +82,9 @@ out-of-range or a non-r2 delivery rejects. Cross-origin → 403.
 ### 3.5 Client portal (`/p/<identifier>-<secret>`)
 
 - Renders every active item: portfolio items show an embed `<iframe>` (the CDN
-  host itself plays the video); r2 items show a locked, watermarked
-  "Photography Pixel" frame until released.
+  host itself plays the video); r2 items play through the authorized `/preview`
+  route with a CSS-only "Photography Pixel" overlay (the overlay is not burned
+  into the streamed file).
 - One confirm button confirms the whole set. First **download** stamps the
   shared 72h `download_expires_at` on all active items; later downloads never
   extend it. Status transitions drive the UI (pending → confirmed →
@@ -111,8 +112,8 @@ security model or the official post-release download flow.
 - `brand.ts` CSS hides the WebKit PiP control button.
 - The client page never contains R2 keys, bucket names, presigned/signed URLs,
   or original object references — the preview `<video>` src is always the
-  authorized `{base}/p/{token}/preview?item=N` route, which streams the
-  watermarked preview server-side.
+  authorized `{base}/p/{token}/preview?item=N` route, which streams the private
+  source media server-side (no burned-in watermark).
 
 Honest scope: this is UX-only hardening, not DRM. A determined user can still
 screen-record or open DevTools, and browsers that ignore `controlsList` (e.g.
@@ -120,7 +121,9 @@ Firefox) still show native controls. Cross-origin iframe players cannot be
 context-menu-blocked from the parent. The real protection stays server-side:
 private R2 bucket, token secret, release-state gating, and the 72h expiry
 stamped on first download. The supported claim is: "Native browser download
-controls are disabled and original files remain server-protected."
+controls are disabled, and a VIEW_ONLY delivery never offers a download — but
+the video is still streamed to the browser for playback, so this is not DRM and
+the source can be captured by a determined user."
 
 ### 3.7 List (`/admin/deliveries`)
 

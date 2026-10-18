@@ -103,7 +103,9 @@ export function downloadAllowed(delivery: DeliveriesRow): boolean {
   // already VIEW_ONLY, but the workflow is refused explicitly as well so the
   // download endpoint can never be widened by a mode change alone.
   if (isTemporaryShare(delivery)) return false
-  // VIEW_ONLY deliveries never expose the original, regardless of status.
+  // VIEW_ONLY deliveries never OFFER the original as a download, regardless of
+  // status. (Playback still streams the source media through /preview — this
+  // gate only closes the download path.)
   if (delivery.delivery_mode === 'VIEW_ONLY') return false
   // The original is only downloadable after the owner EXPLICITLY releases it.
   // Confirmation alone never releases the file (Phase 4J workflow).
@@ -296,6 +298,7 @@ export async function proxyR2Download(
       'Content-Length': String(object.size),
       'Content-Disposition': contentDispositionHeader(filename),
       'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
     },
   })
 }
@@ -368,9 +371,10 @@ export function renderPrivatePage(base: string, token: string, data: PrivateDeli
   const awaitingRelease = delivery.status === 'pending' || delivery.status === 'preview_viewed' || delivery.status === 'confirmed'
   const canDownload = confirmedState(delivery) && !viewOnly
 
-  // Each active item renders as its own preview block. R2 previews stream
-  // through the authorized /preview endpoint (watermarked overlay in CSS); the
-  // private R2 object URL is never exposed to the page.
+  // Each active item renders as its own preview block. R2 media streams through
+  // the authorized /preview endpoint; the private R2 object URL is never exposed
+  // to the page. The "Photography Pixel" mark is a CSS overlay only — it is NOT
+  // burned into the streamed file, so it is a visual deterrent, not protection.
   let media = ''
   if (expired) {
     media = `<p class="muted">انتهت صلاحية هذا التوصيل وحُذفت النسخ الأصلية من سجلّنا. يمكنك التواصل معنا للحصول على نسخة جديدة عند الحاجة.</p>`
@@ -400,8 +404,10 @@ export function renderPrivatePage(base: string, token: string, data: PrivateDeli
         // hand out, and /download refuses anything not explicitly released.
         //
         // The R2 branch below uses <video controlslist>, which is UX polish
-        // only — the actual guarantee there is that VIEW_ONLY shares stream
-        // through /preview and the original is never served.
+        // only — the real guarantee is server-side: a VIEW_ONLY delivery never
+        // offers a /download, and playback is gated by the token and status.
+        // The stream still carries the source media, so it is "no download",
+        // not "the original never leaves the server".
         const body =
           item.source_type === 'portfolio'
             ? `<div class="video-frame vertical"><iframe src="${escapeHtml(item.portfolio_url ?? '')}" title="الفيديو ${number}" draggable="false" scrolling="no" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope"></iframe><div class="pp-pattern-watermark" aria-hidden="true"></div></div>`

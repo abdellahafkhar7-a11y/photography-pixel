@@ -170,8 +170,9 @@ Honest limitation: the protection is UX-only, not DRM. `controlsList` /
 Firefox ignores them), screen-recording still works, and context-menu/pip cannot
 be intercepted inside cross-origin iframe players from the parent. Real security
 remains server-side: private R2 bucket, token secret, release-state gating, 72h
-expiry. Supported claim: "Native browser download controls are disabled and
-original files remain server-protected."
+expiry. Supported claim: "Native browser download controls are disabled and a
+VIEW_ONLY delivery never offers a download — the video is still streamed to the
+browser for playback, so this is not DRM."
 
 ## 12. Final status
 
@@ -182,8 +183,9 @@ original files remain server-protected."
 - **Application/security:** PASS — no QA code, no secrets, escaping/CSRF/RBAC
   verified; cross-origin 403s re-verified on all new multi-video actions.
 - **Client download protection:** PASS — browser native download / context menu /
-  PiP removed pre-release on every item; watermark, official post-release
-  download, and the 72h lifecycle verified; mobile + desktop matrices green.
+  PiP removed pre-release on every item; CSS-only overlay present (not a burned-in
+  watermark), official post-release download, and the 72h lifecycle verified;
+  mobile + desktop matrices green.
 - **Build/config:** PASS — typecheck/lint/build green; 12 migrations; the two
   bugs found during the 4M run (released-items count, create-page add-video
   catalog) fixed and re-verified in the harness.

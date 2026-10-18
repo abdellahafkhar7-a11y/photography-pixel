@@ -601,7 +601,7 @@ export function renderDeliveryDetail(
             const portfolioUrl = video.source_type === 'portfolio' ? video.portfolio_url : null
             const embed = portfolioUrl
               ? `<div class="video-frame"><video controls preload="metadata" src="${escapeHtml(portfolioUrl)}"></video></div>`
-              : `<div class="video-frame video-frame-lock"><div class="pp-pattern-watermark"></div><p class="muted" style="padding:1rem">${shellIcon('lock', 16)} فيديو خاص — معاينة العميل تعرض نسخة بعلامة مائية (Photography Pixel). الأصل يُحمَّل بعد تأكيد العميل وإطلاق التحميل.</p></div>`
+              : `<div class="video-frame video-frame-lock"><div class="pp-pattern-watermark"></div><p class="muted" style="padding:1rem">${shellIcon('lock', 16)} فيديو خاص — يشاهد العميل الفيديو داخل صفحة المعاينة فقط (بدون زر تنزيل). يُتاح الأصل للتحميل بعد إطلاقه من المصوّر.</p></div>`
             const meta = [
               video.source_type === 'portfolio' ? 'من المعرض العام' : 'فيديو خاص',
               video.original_filename ? escapeHtml(video.original_filename) : '',

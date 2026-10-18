@@ -877,11 +877,33 @@ async function getSearchIndex() {
   const results = await Promise.all(
     CATEGORIES.map(async cat => {
       const urls = await fetchCategoryUrls(cat.txt);
-      return urls.map(url => ({
-        title: decodeURIComponent(url.split('/').pop() || '') || url,
-        video: url,
-        category: cat.slug
-      }));
+
+      // The TXT data files store only opaque Wistia media IDs — there are no
+      // individual video titles to index. Build searchable text from the
+      // available category metadata (nav label, slug/route) plus any configured
+      // title/subtitle/SEO strings, so category-level searches like "ugc",
+      // "events" or "shooting" return that category's videos. The media ID is
+      // kept searchable too. No titles are fabricated.
+      const categoryTerms = [
+        cat.label,
+        cat.slug,
+        cat.route,
+        getConfig(cat.slug, 'label', ''),
+        getConfig(cat.slug, 'title', ''),
+        getConfig(cat.slug, 'subtitle', ''),
+        getConfig(cat.slug, 'seoTitle', '')
+      ].filter(Boolean).join(' ');
+
+      return urls.map(url => {
+        const mediaId = decodeURIComponent(url.split('/').pop() || '') || url;
+        return {
+          title: mediaId,
+          video: url,
+          category: cat.slug,
+          categoryLabel: getConfig(cat.slug, 'label', cat.label),
+          searchText: (mediaId + ' ' + categoryTerms).toLowerCase()
+        };
+      });
     })
   );
 
@@ -907,7 +929,7 @@ function renderSearchResults(query) {
 
   const q = query.toLowerCase().trim();
   const results = searchIndex.filter(item =>
-    (item.title || '').toLowerCase().includes(q)
+    (item.searchText || item.title || '').toLowerCase().includes(q)
   );
 
   featuredPreviews.forEach(el => el.style.display = 'none');
@@ -1124,6 +1146,7 @@ function handleRoute() {
   if (imageModal && imageModal.classList.contains('active')) closeImagePreview();
   if (menuPanel && menuPanel.classList.contains('active')) closeMenu();
   document.dispatchEvent(new Event('pp:stop-voiceover'));
+  document.dispatchEvent(new Event('pp:close-booking'));
 
   showPage(pageName);
 }
@@ -1577,6 +1600,12 @@ navItems.forEach(item => {
     if (e.key === 'Escape' && modal.classList.contains('active')) {
       closeModal();
     }
+  });
+
+  // Route changes (browser back/forward) must release the modal's
+  // body scroll lock, mirroring pp:stop-voiceover for the VO modal.
+  document.addEventListener('pp:close-booking', function() {
+    if (modal.classList.contains('active')) closeModal();
   });
 
   // Live-clear field errors once the visitor starts fixing them

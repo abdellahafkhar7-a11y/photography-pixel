@@ -891,7 +891,7 @@ function sideHtml(user: AppUserRow, active: RouteKey): string {
 }
 
 function topHtml(title: string, user: AppUserRow, crumbs?: string): string {
-  const crumb = crumbs ? `<div class="crumb">${crumbs}</div>` : ''
+  const crumb = crumbs ? `<div class="crumb">${escapeHtml(crumbs)}</div>` : ''
   return `
     <header class="top">
       <button class="menu-btn" id="nav-toggle" type="button" aria-label="فتح القائمة">${shellIcon('menu', 21)}</button>

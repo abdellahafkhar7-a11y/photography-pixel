@@ -27,17 +27,6 @@ function hasSecret(context: Parameters<Route>[0]): boolean {
 //   2. The owner, signed in on the admin panel (owner session).
 export const onRequestPost: Route = async (context) => {
   if (!hasSupabaseConfig(context.env)) return json({ ok: false, error: 'not_configured' }, 503)
-  const now = new Date()
-  const minIntervalSeconds = 30
-  const since = Number(context.request.headers.get('x-cleanup-since') ?? '0')
-  if (context.request.headers.has('x-cleanup-since')) {
-    if (!Number.isFinite(since) || since <= 0) {
-      return json({ ok: false, error: 'invalid_since' }, 400)
-    }
-    if (now.getTime() - since < minIntervalSeconds * 1000) {
-      return json({ ok: false, error: 'too_soon' }, 429)
-    }
-  }
 
   if (hasSecret(context)) {
     const result: CleanupResult = await runCleanup(context.env, (line) => console.log(line))

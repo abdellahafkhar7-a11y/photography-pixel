@@ -102,10 +102,42 @@ expired` (all `NOT NULL` guarded by CHECK), plus nullable transition timestamps
 4. **Cron worker**: `cd workers/cleanup && npx wrangler deploy` (its
    `wrangler.toml` defines the daily 03:00 cron). Set `CLEANUP_ENDPOINT` to
    `https://<project>.pages.dev/__cleanup` and `wrangler secret put
-   CLEANUP_SECRET` to the same value as on Pages. The worker POSTs
-   `x-cleanup-since` so the endpoint ignores calls sooner than 30 s apart.
+   CLEANUP_SECRET` to the same value as on Pages. The worker authenticates each
+   `POST` with that secret (sent as `x-cleanup-secret`); there is **no
+   rate-limit or timestamp handshake** — a signed-in owner session is the only
+   other accepted caller, and every other request is refused (see below).
 5. **Deploy functions**: commit and push; Pages CI builds the Workers with the
    existing `_redirects` rules.
+
+## Cleanup endpoint — authentication (as-built)
+
+`POST /__cleanup` is the only method (a `GET` returns `405`). It is authorized by
+either of two callers, never by a timing/throttle header:
+
+1. The scheduled Worker, presenting `CLEANUP_SECRET` via `x-cleanup-secret` (or
+   `Authorization: Bearer`). The value is compared in constant time and the
+   check fails closed when the secret is unset.
+2. A signed-in **owner** on the admin panel (owner session).
+
+With Supabase unconfigured the endpoint returns `503`; an unauthenticated caller
+gets `401` and a non-owner session gets `403`. (The earlier `x-cleanup-since`
+"ignore calls sooner than 30 s" guard was removed.)
+
+## Preview & VIEW_ONLY — as-built behaviour
+
+- `/preview` streams the delivery's **private source file** (token + status +
+  active-item gated, `Cache-Control: private, no-store`, no attachment). There
+  is **no burned-in watermark**: the "Photography Pixel" mark on the client page
+  is a CSS-only overlay, so it deters casual screen-capture but is not part of
+  the streamed bytes.
+- **VIEW_ONLY** means the interface **offers no download** for the delivery. It
+  does **not** mean the original bytes never leave the server — in-browser
+  playback requires transmitting the media, and that media is the source file.
+- A genuine watermark / transcoding pipeline (a real
+  `previews/.../preview_watermarked.mp4` derivative) is **not implemented yet**.
+  `delivery_videos.r2_preview_key` exists and is always `null`, and the
+  `previewKey()` helper is a placeholder for that future work.
+
 
 ## Notes / dev artifacts
 
