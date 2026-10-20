@@ -91,10 +91,49 @@ function generateVideoSchema(videos, categoryLabel) {
   return { '@context': 'https://schema.org', '@graph': graph };
 }
 
+// ── Cache-busting ───────────────────────────────────────
+//
+// styles.css and script.js are served with `Cache-Control: immutable,
+// max-age=31536000` (see _headers). Browsers — notably iOS Safari — will
+// therefore keep a cached copy for up to a year and never revalidate it.
+// If the file content changes but the `?v=` query string does not, the device
+// keeps serving STALE CSS/JS (the "design looks broken on my phone but fine
+// on desktop" symptom). We derive the query from a hash of the file content
+// so any change automatically produces a new URL.
+
+function contentHash(file) {
+  const data = fs.readFileSync(path.join(__dirname, file));
+  // Inline FNV-1a (32-bit) — no crypto dependency, stable across Node builds.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < data.length; i++) {
+    h ^= data[i];
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16);
+}
+
+const assetVersions = {
+  'styles.css': contentHash('styles.css'),
+  'script.js': contentHash('script.js'),
+};
+
+function applyAssetVersions(html) {
+  return html
+    .replace(/(styles\.css)\?v=[^"'&\s]*/g, `$1?v=${assetVersions['styles.css']}`)
+    .replace(/(script\.js)\?v=[^"'&\s]*/g, `$1?v=${assetVersions['script.js']}`);
+}
+
 // ── Read template & config ──────────────────────────────
 
-const baseHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf-8');
+const rawBaseHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf-8');
+const baseHtml = applyAssetVersions(rawBaseHtml);
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'config.json'), 'utf-8'));
+
+// Keep the root template (index.html) in sync with the hashed versions so the
+// served homepage and every prerendered route reference the same URLs.
+if (rawBaseHtml !== baseHtml) {
+  fs.writeFileSync(path.join(__dirname, 'index.html'), baseHtml, 'utf-8');
+}
 
 // ── Route definitions ───────────────────────────────────
 

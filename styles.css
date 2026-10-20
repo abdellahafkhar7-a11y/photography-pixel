@@ -124,10 +124,19 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  overflow-x: hidden;
+  /* IMPORTANT (iOS Safari): the viewport's overflow comes from `html` only
+     while `html`'s overflow is `visible`. Setting any non-visible value here
+     (the previous `overflow-x: hidden`) stops the transfer from `body` to the
+     viewport, makes `html` the scroll container, and — with a flex `body` —
+     broke scrolling ("can't reach the bottom"). Horizontal overflow is clipped
+     on `body` instead, so the viewport keeps its overflow from `body`. */
   -webkit-tap-highlight-color: transparent;
-  scroll-behavior: smooth;
 }
+
+/* NOTE: no global `scroll-behavior: smooth`. It made iOS Safari animate every
+   programmatic scroll (SPA route changes, modal focus moves, scrollTo(0,0)),
+   which read as "excessive / sticky" scrolling. Smooth scrolling is now
+   requested explicitly per call site in script.js. */
 
 body {
   font-family: var(--font-sans);
@@ -137,14 +146,22 @@ body {
   background: var(--bg-primary);
   min-height: 100vh;
   min-height: 100dvh;
-  overflow-x: hidden;
-  overflow-y: auto;
+  /* Let the document be the single scroll container. The previous
+     `overflow-y: auto` created a second scroll container nested inside the
+     document scroller, which on iOS Safari caused double/rubber-band
+     scrolling. Horizontal clipping stays to prevent sideways overflow. */
+  overflow-x: clip;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   display: flex;
   flex-direction: column;
-  -webkit-overflow-scrolling: touch;
+}
+
+@supports not (overflow: clip) {
+  body {
+    overflow-x: hidden;
+  }
 }
 
 /* Cinematic Ambient Background */
@@ -370,8 +387,17 @@ a:focus-visible {
 .page {
   width: min(var(--content-max), calc(100% - var(--space-8)));
   margin: var(--space-6) auto calc(var(--space-11) + env(safe-area-inset-bottom));
-  overflow-x: hidden;
+  /* `clip` prevents sideways overflow WITHOUT turning this block into a
+     scroll container (unlike `hidden`, which forces overflow-y: auto and
+     nested the page scroll inside the document on iOS Safari). */
+  overflow-x: clip;
   flex: 1 0 auto;
+}
+
+@supports not (overflow: clip) {
+  .page {
+    overflow-x: hidden;
+  }
 }
 
 section[id],
@@ -1798,6 +1824,100 @@ footer[id] {
 }
 
 /* ============================================
+    UNSUPPORTED BROWSER NOTICE
+    Rendered only when feature detection fails.
+    Plain CSS only (no custom properties/gap/:is())
+    so it can still style itself on old engines.
+    ============================================ */
+#pp-browser-warning {
+  position: fixed;
+  z-index: 2147483000;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: block;
+  padding: 24px 16px;
+  background: #FAF8F3;
+  color: #201F1C;
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+  text-align: center;
+  overflow-y: auto;
+  direction: rtl;
+}
+
+#pp-browser-warning .pp-bw-card {
+  max-width: 520px;
+  margin: 8vh auto 0;
+  padding: 32px 24px;
+  background: #FFFFFF;
+  border: 1px solid rgba(32, 31, 28, 0.1);
+  border-radius: 20px;
+  box-shadow: 0 20px 40px -12px rgba(32, 31, 28, 0.14);
+}
+
+#pp-browser-warning .pp-bw-icon {
+  display: block;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 16px;
+  color: #5B4BE0;
+}
+
+#pp-browser-warning .pp-bw-icon svg {
+  width: 64px;
+  height: 64px;
+}
+
+#pp-browser-warning .pp-bw-title {
+  font-size: 22px;
+  font-weight: 800;
+  margin: 0 0 12px;
+  color: #201F1C;
+}
+
+#pp-browser-warning .pp-bw-text {
+  font-size: 15px;
+  line-height: 1.7;
+  margin: 0 0 24px;
+  color: #45413A;
+}
+
+#pp-browser-warning .pp-bw-actions {
+  display: block;
+}
+
+#pp-browser-warning .pp-bw-btn {
+  display: inline-block;
+  margin: 6px 5px;
+  padding: 12px 20px;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #201F1C;
+  background: #F4F0E8;
+  border: 1px solid rgba(32, 31, 28, 0.12);
+  border-radius: 9999px;
+  text-decoration: none;
+}
+
+#pp-browser-warning .pp-bw-btn-primary {
+  color: #FFFFFF;
+  background: linear-gradient(135deg, #2F6BFF 0%, #6C4DFF 52%, #8B3FE0 100%);
+  border-color: transparent;
+}
+
+/* When the gate trips, hide the app shell so only the notice is shown. */
+.pp-unsupported-browser #floating-nav,
+.pp-unsupported-browser #top,
+.pp-unsupported-browser .floating-nav,
+.pp-unsupported-browser main.page,
+.pp-unsupported-browser .bottom-nav,
+.pp-unsupported-browser .footer {
+  display: none !important;
+}
+
+/* ============================================
     MODEL BOOKING REQUEST MODAL
     ============================================ */
 .booking-modal {
@@ -3017,11 +3137,21 @@ footer[id] {
     font-size: var(--text-base);
   }
 
-  /* Ensure no horizontal scroll on page level */
-  .profile-card,
+  /* Ensure no horizontal scroll on page level (clip avoids nested scrollers) */
+  .profile-card {
+    overflow-x: hidden;
+  }
+
   .page,
   .footer-container {
-    overflow-x: hidden;
+    overflow-x: clip;
+  }
+
+  @supports not (overflow: clip) {
+    .page,
+    .footer-container {
+      overflow-x: hidden;
+    }
   }
 
   .nav-menu {
@@ -3052,7 +3182,13 @@ footer[id] {
     max-width: 100%;
     margin: var(--space-2) auto var(--space-6);
     padding: 0 0 calc(max(var(--space-16), calc(var(--space-12) + env(safe-area-inset-bottom))) + 10px);
-    overflow-x: hidden;
+    overflow-x: clip;
+  }
+
+  @supports not (overflow: clip) {
+    .page {
+      overflow-x: hidden;
+    }
   }
 
   .profile-card {
@@ -3403,9 +3539,15 @@ footer[id] {
     display: none;
   }
 
-  /* Prevent horizontal scroll */
+  /* Prevent horizontal scroll (clip on the root avoids nested scrollers) */
   body {
-    overflow-x: hidden;
+    overflow-x: clip;
+  }
+
+  @supports not (overflow: clip) {
+    body {
+      overflow-x: hidden;
+    }
   }
 
   /* Space for fixed bottom nav */
@@ -5146,6 +5288,29 @@ footer[id] {
 @media (max-width: 768px) {
   .seo-catalog {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================
+    iOS SAFARI SCROLL STABILITY
+    Single document scroller · no nested scroll containers · no
+    content-visibility jumpiness on touch devices · bottom-nav clearance.
+    ============================================ */
+@media (max-width: 1023px) {
+  /* content-visibility + contain-intrinsic-size can make the scroll
+     position jump as off-screen grids render on iOS Safari. Disable it
+     on touch-sized viewports; cards still use lightweight paint containment. */
+  .voiceover-grid {
+    content-visibility: visible;
+    contain-intrinsic-size: none;
+  }
+}
+
+/* Clearance so the floating bottom navigation never covers trailing
+   content, on top of each element's own safe-area padding. */
+@media (max-width: 540px) {
+  .page {
+    scroll-padding-bottom: calc(72px + env(safe-area-inset-bottom));
   }
 }
 

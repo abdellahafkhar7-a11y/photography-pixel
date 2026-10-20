@@ -604,6 +604,18 @@ function renderVideoCards(urls, containerId, slug, limit) {
   grid.innerHTML = '';
   grid.appendChild(fragment);
 
+  // Cards rendered after the initial page load must never stay hidden.
+  // The reveal observer only fires for them once they are scrolled into view,
+  // so on slow connections (data/TXT fetches resolving late) every freshly
+  // created card would sit at opacity:0 below the fold — paradoxically making
+  // the portfolio look empty on mobile. These cards were never seen animating
+  // in, so reveal them straight away and skip the entrance animation.
+  const animateEntrance = grid.dataset.revealAnimated !== '1';
+  grid.dataset.revealAnimated = '1';
+  if (!animateEntrance) {
+    grid.querySelectorAll('.reveal-scale').forEach(card => card.classList.add('active'));
+  }
+
   forceActivateRevealCards(grid);
 }
 
@@ -620,6 +632,22 @@ function forceActivateRevealCards(grid) {
       });
     });
   });
+
+  // Safety net: a dynamically-rendered grid must never remain hidden simply
+  // because it sits below the fold. IntersectionObserver is not guaranteed to
+  // fire reliably for elements created after load (iOS Safari / restored
+  // bfcache pages), which left whole portfolio grids at opacity:0. Reveal any
+  // stragglers after a short delay so content is always visible.
+  // `grid` may be `document` (whole-page sweep), which has no dataset.
+  const scope = grid.dataset ? grid : document.documentElement;
+  if (!scope.dataset.revealSweepScheduled) {
+    scope.dataset.revealSweepScheduled = '1';
+    setTimeout(() => {
+      grid.querySelectorAll('.reveal-scale:not(.active), .reveal:not(.active), .reveal-fade:not(.active)').forEach(el => {
+        el.classList.add('active');
+      });
+    }, 900);
+  }
 }
 
 function ensureCategoryContainers() {
@@ -1256,6 +1284,15 @@ function resetPageVideos(pageEl) {
 function showPage(pageName) {
   updatePageMeta(pageName);
 
+  // Defensive: a page change must never inherit a stuck scroll lock. Any
+  // overlay (lightbox/menu/booking) adds body.modal-open or inline
+  // overflow/touch-action; if one was left behind, scrolling stays frozen on
+  // iOS Safari. Releasing it here is a no-op when nothing is locked.
+  document.body.classList.remove('modal-open');
+  if (document.body.style.overflow === 'hidden') document.body.style.overflow = '';
+  if (document.body.style.touchAction === 'none') document.body.style.touchAction = '';
+  if (document.body.style.overscrollBehavior === 'none') document.body.style.overscrollBehavior = '';
+
   const previousActive = document.querySelector('.page-view.active');
 
   // Re-query page views to include dynamically created pages
@@ -1336,6 +1373,14 @@ function showPage(pageName) {
 
     // Force-activate reveal elements already in viewport
     forceActivateRevealCards(revealContainer);
+
+    // Safety net for this page: whatever the observer misses, reveal shortly
+    // after (prevents invisible content on iOS Safari after page switches).
+    setTimeout(() => {
+      revealContainer.querySelectorAll('.reveal:not(.active), .reveal-fade:not(.active), .reveal-scale:not(.active)').forEach(el => {
+        el.classList.add('active');
+      });
+    }, 1200);
   }
 
   // Lazily render this page's content (videos/models/etc.) on first visit
@@ -1747,6 +1792,7 @@ async function loadModels() {
       grid.appendChild(card);
       revealObserver.observe(card);
     });
+    forceActivateRevealCards(grid);
   } catch (error) {
     // Failed to load models — grid stays empty
   }
@@ -1793,6 +1839,7 @@ async function loadMediaBuyer() {
       grid.appendChild(card);
       revealObserver.observe(card);
     });
+    forceActivateRevealCards(grid);
   } catch (error) {
     // Failed to load media buyer campaigns — grid stays empty
   }
@@ -1803,8 +1850,13 @@ async function loadMediaBuyer() {
 // ============================================
 const observerOptions = {
   root: null,
-  rootMargin: '0px 0px -100px 0px',
-  threshold: 0.1
+  // threshold 0 (any pixel intersecting) + no negative bottom rootMargin.
+  // The previous `threshold: 0.1` with `rootMargin: '0px 0px -100px 0px'`
+  // could never be satisfied by elements taller than the viewport on iOS
+  // Safari, leaving `.reveal*` content permanently at opacity:0 (invisible
+  // cards/images that look "broken"). Any intersection now reveals.
+  rootMargin: '0px',
+  threshold: 0
 };
 
 const revealCallback = (entries, observer) => {
@@ -1864,6 +1916,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Force-activate reveal elements already in viewport (single layout pass)
   forceActivateRevealCards(document);
+
+  // Safety net: never leave content hidden. If the IntersectionObserver fails
+  // to fire (iOS Safari edge cases, restored bfcache pages, layout shifts from
+  // lazy-mounted media), reveal everything that is still hidden shortly after
+  // load. Uses two rAFs + a timeout so normal observer animations still play.
+  const revealFallback = () => {
+    document.querySelectorAll('.reveal:not(.active), .reveal-fade:not(.active), .reveal-scale:not(.active)').forEach(el => {
+      el.classList.add('active');
+    });
+  };
+  setTimeout(revealFallback, 1200);
+  window.addEventListener('pageshow', () => setTimeout(revealFallback, 300), { once: true });
 });
 
 // ============================================
@@ -2026,6 +2090,9 @@ document.addEventListener('DOMContentLoaded', () => {
           revealObserver.observe(card);
         }
       });
+      if (typeof forceActivateRevealCards === 'function') {
+        forceActivateRevealCards(voGrid);
+      }
     } catch (err) {
       // Failed to load voice overs
       voGrid.hidden = true;
