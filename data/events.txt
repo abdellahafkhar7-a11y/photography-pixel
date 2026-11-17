@@ -1,17 +1,4 @@
 # Events portfolio videos — one Wistia media per line: MEDIA_ID|wistia
-tp73ear9g7|wistia
-u769bavngk|wistia
-74660eupdb|wistia
-65xm775q10|wistia
-475fzqdqrz|wistia
-zcp5ll84zb|wistia
-uf4l2yqpis|wistia
-aurkq0m3yw|wistia
-3ssdnfb2wd|wistia
-44mpkifhfk|wistia
-d8bvzaqql0|wistia
-7w1dthpl8e|wistia
-k2r5dt7suh|wistia
-vlw041noce|wistia
-l8454x7frf|wistia
-6sggviqn2p|wistia
+00r7mtac6b|wistia
+tu65wljr9d|wistia
+2udrhupiug|wistia

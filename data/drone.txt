@@ -1,1 +1,4 @@
 # Locations portfolio videos — one Wistia media per line: MEDIA_ID|wistia
+cps02oaito|wistia
+dgulocx6uj|wistia
+p41xtj3bej|wistia
